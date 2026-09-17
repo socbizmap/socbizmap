@@ -1,0 +1,212 @@
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { CATEGORIES } from '@/src/categories';
+import { Chip, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
+import { DataError } from '@/src/data';
+import type { PinCategory, PinKind, Vertical } from '@/src/data/types';
+import { isValidUaPhone, KHARKIV, normalizeUaPhone } from '@/src/geo';
+import { t } from '@/src/i18n';
+import { useData } from '@/src/session';
+import { colors } from '@/src/theme';
+
+export default function CreatePinScreen() {
+  const { session, profile, api } = useData();
+  const params = useLocalSearchParams<{ vertical?: string; kind?: string; id?: string }>();
+  const editing = Boolean(params.id);
+  const [kind, setKind] = useState<PinKind>(params.kind === 'offer' ? 'offer' : 'seek');
+  const [vertical, setVertical] = useState<Vertical>(params.vertical === 'service' ? 'service' : 'work');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [schedule, setSchedule] = useState('');
+  const [pay, setPay] = useState('');
+  const [phone, setPhone] = useState(profile?.phone?.replace('+380', '') ?? '');
+  const [category, setCategory] = useState<PinCategory>('other');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace('/login');
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    void api.getQuota().then((q) => setQuota({ used: q.used, limit: q.limit }));
+  }, [api, session]);
+
+  useEffect(() => {
+    if (!params.id) return;
+    void api.getPin(params.id).then((pin) => {
+      if (!pin) return;
+      setKind(pin.kind);
+      setVertical(pin.vertical);
+      setTitle(pin.title);
+      setDescription(pin.description);
+      setSchedule(pin.schedule);
+      setPay(pin.payAmount != null ? String(Math.round(pin.payAmount)) : '');
+      setPhone((pin.contactPhone ?? '').replace('+380', ''));
+      setCategory(pin.category);
+    });
+  }, [api, params.id]);
+
+  async function save() {
+    setError(null);
+    const contactPhone = normalizeUaPhone(phone);
+    if (!title.trim()) {
+      setError('Назва обовʼязкова');
+      return;
+    }
+    if (!isValidUaPhone(contactPhone)) {
+      setError('Телефон мітки: +380 і 9 цифр');
+      return;
+    }
+    const payAmount = pay.trim() === '' ? null : Number(pay.replace(/\s/g, ''));
+    if (payAmount != null && Number.isNaN(payAmount)) {
+      setError('Оплата — лише цифри');
+      return;
+    }
+    setBusy(true);
+    try {
+      if (editing && params.id) {
+        await api.updatePin(params.id, {
+          kind,
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          schedule: schedule.trim(),
+          payAmount,
+          contactPhone,
+        });
+        router.replace(`/pin/${params.id}`);
+      } else {
+        const created = await api.createPin({
+          kind,
+          vertical,
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          schedule: schedule.trim(),
+          payAmount,
+          contactPhone,
+          geog: profile?.lastGeog ?? KHARKIV,
+          city: profile?.lastGeog ? '' : 'Харків',
+        });
+        router.replace(`/pin/${created.id}`);
+      }
+    } catch (e) {
+      setError(e instanceof DataError ? e.message : 'Не збережено');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <Title>{editing ? t('edit') : t('createPin')}</Title>
+        {quota && !editing ? (
+          <Muted style={styles.quota}>
+            {t('quota')}: {quota.used} з {quota.limit}
+          </Muted>
+        ) : (
+          <Muted style={styles.quota}>{editing ? 'Олівець не зʼїдає квоту' : ''}</Muted>
+        )}
+        <View style={styles.row}>
+          <Chip label={t('seek')} selected={kind === 'seek'} onPress={() => setKind('seek')} />
+          <Chip label={t('offer')} selected={kind === 'offer'} onPress={() => setKind('offer')} />
+        </View>
+        <View style={styles.row}>
+          {CATEGORIES.map((c) => (
+            <Chip
+              key={c.id}
+              label={t(c.label)}
+              selected={category === c.id}
+              onPress={() => setCategory(c.id)}
+            />
+          ))}
+        </View>
+        <Field label={t('title')} value={title} onChange={setTitle} />
+        <Field label={t('description')} value={description} onChange={setDescription} multiline />
+        <Field label={t('schedule')} value={schedule} onChange={setSchedule} />
+        <View>
+          <Text style={styles.label}>{t('pay')}</Text>
+          <View style={styles.payRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              keyboardType="numeric"
+              value={pay}
+              onChangeText={setPay}
+              placeholder="12000"
+              placeholderTextColor={colors.muted}
+            />
+            <Text style={styles.uah}>{t('uah')}</Text>
+          </View>
+        </View>
+        <View>
+          <Text style={styles.label}>{t('phone')}</Text>
+          <View style={styles.payRow}>
+            <Text style={styles.uah}>+380</Text>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              keyboardType="phone-pad"
+              value={phone.replace(/^\+380/, '')}
+              onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 9))}
+            />
+          </View>
+        </View>
+        {error ? <Text style={styles.err}>{error}</Text> : null}
+        <PrimaryButton label={t('save')} disabled={busy} onPress={() => void save()} />
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline ? styles.multi : null]}
+        value={value}
+        onChangeText={onChange}
+        multiline={multiline}
+        placeholderTextColor={colors.muted}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  quota: { marginVertical: 12 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
+  field: { marginBottom: 12 },
+  label: { fontWeight: '600', color: colors.text, marginBottom: 6 },
+  input: {
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: 16,
+  },
+  multi: { minHeight: 80, textAlignVertical: 'top' },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  uah: { fontSize: 20, fontWeight: '700', color: colors.primaryDark },
+  err: { color: colors.danger, marginBottom: 12 },
+});
