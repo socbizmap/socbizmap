@@ -10,17 +10,16 @@ If either variable is missing or empty, the app uses the **mock** data layer (As
 
 ## 1. Apply migrations
 
-SQL files live in `supabase/migrations/` and are ordered by filename. For this MVP there is one file:
+SQL files live in `supabase/migrations/` and are ordered by filename:
 
-`supabase/migrations/20260917120000_init.sql`
-
-It creates PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), and storage buckets `avatars` + `pin-media`.
+1. `supabase/migrations/20260917120000_init.sql` — PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), storage buckets `avatars` + `pin-media`.
+2. `supabase/migrations/20260917220000_smoke_fixes.sql` — **already applied live** (2026-09-17). Re-run is safe (`create or replace` / `drop policy if exists`).
 
 ### SQL editor (fastest)
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → project `mutfwhenuegvdwhgwnty` → **SQL Editor**.
-2. Paste the full contents of `20260917120000_init.sql`.
-3. Run. Safe to re-run: enums/tables use `if not exists` / `duplicate_object` guards; policies are dropped then created.
+2. Paste each file in filename order (skip `20260917220000_smoke_fixes.sql` if this project already has it).
+3. Init is safe to re-run: enums/tables use `if not exists` / `duplicate_object` guards; policies are dropped then created.
 
 ### CLI
 
@@ -32,11 +31,11 @@ npx supabase db push
 
 Do not put the service role key in this repo.
 
-## 2. Auth (phone OTP, +380)
+## 2. Auth — Phone OTP (Twilio)
 
-In Dashboard → **Authentication**:
+In Dashboard → **Authentication** → **Providers** (or **Auth** → **Providers**):
 
-1. Enable **Phone** provider (SMS).
+1. Enable **Phone** (SMS OTP). Supabase sends via **Twilio** — set the Twilio credentials there, not in this repo.
 2. Restrict to Ukraine `+380` if the provider allows a country allowlist.
 3. Registration = first successful OTP; trigger `handle_new_user` inserts `profiles`.
 
@@ -59,9 +58,33 @@ Restart Expo (`npx expo start`) so `EXPO_PUBLIC_*` is inlined. The client reads 
 
 Without the anon key the splash screen shows **Дані: mock** and never talks to the project.
 
-## 4. What the schema enforces
+## 4. Guest reads (anon has no table SELECT on `pins`)
 
-- Public map/list: `status = live` only; guests can `select` live pins **without** `contact_phone`.
+PostgREST needs **table-level** `SELECT` to expose a table. A column grant that omits `contact_phone` is not enough, so **anon has no `SELECT` on `public.pins`**.
+
+Guests (and the Expo map) must use:
+
+- RPC **`list_live_pins_nearby`** — map/list, no `contact_phone`
+- View **`pins_public`** — same public columns, **no `contact_phone`**
+
+Logged-in users `select` `public.pins` (includes phone after login). Authors and admin still see own / queue rows via RLS.
+
+## 5. Storage — `buckets_public_read`
+
+Buckets **`avatars`** and **`pin-media`** are public objects, but the Storage API `listBuckets` / bucket metadata needs a policy on `storage.buckets`:
+
+```sql
+-- in 20260917220000_smoke_fixes.sql (already live)
+create policy "buckets_public_read" on storage.buckets
+  for select to anon, authenticated
+  using (public = true);
+```
+
+Object paths: `avatars/{user_id}/…`, `pin-media/{user_id}/…`. Object policies stay owner-write / public-read on `storage.objects`.
+
+## 6. What the schema enforces
+
+- Public map/list: `status = live` only, via RPC / `pins_public`.
 - Author sees own pins in any status. Admin sees `pending|revision|rejected`.
 - New pin `INSERT` → `pending`, `boost_until` forced null. Calendar-month quota in `Europe/Kyiv`: 3 (`free`) / 30 (`pro`). Pencil `UPDATE` and `revision` → `pending` do **not** consume quota.
 - Substantial author edits of `live`/`revision` flip status back to `pending`.
@@ -71,7 +94,7 @@ Without the anon key the splash screen shows **Дані: mock** and never talks 
 
 Statuses: `pending | revision | rejected | live | closed | hidden | archived | deleted`. Public map uses `live`. Beta UI does not write `boost_until`.
 
-## 5. Smoke without backend
+## 7. Smoke without backend
 
 ```bash
 npm install

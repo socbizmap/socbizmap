@@ -238,7 +238,10 @@ export function createSupabaseApi(): DataApi {
     },
 
     async getPin(id) {
-      const { data, error } = await sb.from('pins').select('*').eq('id', id).maybeSingle();
+      const { data: sessionData } = await sb.auth.getSession();
+      // Anon has no table SELECT on pins — guests use pins_public (no contact_phone).
+      const table = sessionData.session ? 'pins' : 'pins_public';
+      const { data, error } = await sb.from(table).select('*').eq('id', id).maybeSingle();
       if (error) wrapError(error, 'Мітку не знайдено');
       if (!data) return null;
       const media = await loadMedia(sb, id);
