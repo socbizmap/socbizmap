@@ -48,6 +48,15 @@ export function kyivMonthKey(d = new Date()): string {
   return `${year}-${month}`;
 }
 
+export function inPilotOblast(lat: number, lng: number): boolean {
+  return (
+    lng >= PILOT_BBOX.minLng &&
+    lng <= PILOT_BBOX.maxLng &&
+    lat >= PILOT_BBOX.minLat &&
+    lat <= PILOT_BBOX.maxLat
+  );
+}
+
 export function projectToPilot(
   lat: number,
   lng: number,

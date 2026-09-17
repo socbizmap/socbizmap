@@ -6,7 +6,7 @@ Expo env (public only — never commit the anon key):
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
-If either variable is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v10`). Mock OTP code: `123456`. Admin mock phone: `+380500000000`.
+If either variable is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456`. Admin mock phone: `+380500000000`.
 
 ## 1. Apply migrations
 

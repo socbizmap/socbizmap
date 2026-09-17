@@ -12,7 +12,7 @@ import {
   type Session,
 } from './types';
 
-const STORAGE_KEY = 'socbizmap.mock.v10';
+const STORAGE_KEY = 'socbizmap.mock.v11';
 export const MOCK_OTP = '123456';
 
 type MockState = {
@@ -188,6 +188,28 @@ function seed(state: MockState): MockState {
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: media('pin-zm-offer-service', ''),
+    },
+    {
+      id: 'pin-kh-offer-service',
+      authorId: master.id,
+      kind: 'offer',
+      vertical: 'service',
+      title: 'Сантехнік, Харків',
+      category: 'home',
+      description: 'Заміна змішувачів, унітазів.',
+      schedule: 'За домовленістю',
+      payAmount: 900,
+      payCurrency: 'UAH',
+      contactPhone: '+380501000003',
+      geog: { lat: 49.991, lng: 36.235 },
+      city: 'Харків',
+      status: 'live',
+      moderationNote: null,
+      boostUntil: null,
+      expiresAt: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      media: media('pin-kh-offer-service', ''),
     },
     {
       id: 'pin-kh-seek-service',

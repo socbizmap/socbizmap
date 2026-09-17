@@ -13,7 +13,7 @@ import {
 import { PinRow } from '@/src/components/PinRow';
 import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
-import { KHARKIV, projectToPilot } from '@/src/geo';
+import { inPilotOblast, KHARKIV, projectToPilot } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -54,7 +54,9 @@ export default function MapScreen() {
         }
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (!cancelled) {
-          setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          // Pilot is Харківська only — GPS outside the oblast uses Харків fallback (same as deny).
+          setOrigin(inPilotOblast(next.lat, next.lng) ? next : KHARKIV);
         }
       } catch {
         if (!cancelled) setOrigin(KHARKIV);
