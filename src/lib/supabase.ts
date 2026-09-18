@@ -113,7 +113,7 @@ export function getSupabase(): SupabaseClient | null {
       storage: authStorage,
       persistSession: true,
       autoRefreshToken: true,
-      // Web magic-link returns tokens in the URL; native uses the 6-digit email OTP.
+      // Web magic-link: tokens or PKCE `code` land in the URL (Free templates are ConfirmationURL-only).
       detectSessionInUrl: Platform.OS === 'web',
     },
   });

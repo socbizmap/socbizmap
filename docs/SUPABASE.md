@@ -5,9 +5,10 @@ Expo env (public only — never commit the anon key):
 
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-- `EXPO_PUBLIC_AUTH_EMAIL` — set to `1` to show email OTP / magic-link on login immediately (also auto-shown if SMS send fails)
+- `EXPO_PUBLIC_AUTH_EMAIL` — set to `1` to show email magic-link on login immediately (also auto-shown if SMS send fails)
+- `EXPO_PUBLIC_AUTH_EMAIL_OTP` — set to `1` **only** when email templates include `{{ .Token }}` (custom SMTP or Pro). Leave unset on **Free** (ConfirmationURL / magic-link only).
 
-If either URL or anon key is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456` (phone **and** email). Admin mock phone: `+380500000000`.
+If either URL or anon key is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456` (phone **and** email digit field). Admin mock phone: `+380500000000`.
 
 ## 1. Apply migrations
 
@@ -46,21 +47,24 @@ Dashboard → **Authentication** → **Providers** → **Phone**.
 
 There is no password and no Google/Apple/Facebook in v1.
 
-### Email magic-link / email OTP — live path without Twilio
+### Email magic-link — live path on Supabase Free (no Twilio, no {{ .Token }})
 
-Email is **enabled by default** in Supabase Auth. It does **not** use Twilio. Soft-launch login while SMS is down:
+Email is **enabled by default** in Supabase Auth. It does **not** use Twilio.
+
+**Supabase Free cannot edit Auth email templates** (that needs **custom SMTP** or **Pro**). The default Magic Link template is **`{{ .ConfirmationURL }}` only** — there is **no `{{ .Token }}`** in the letter. Soft-launch login therefore uses the **link**, not a 6-digit code from the email body.
 
 1. Dashboard → **Authentication** → **Providers** → **Email** — leave enabled.
-2. **Authentication** → **Email Templates** → **Magic Link**:
-   - Include `{{ .Token }}` so the letter has a **6-digit code** (app field «Надіслати код/посилання» + «Код з листа»).
-   - Keep `{{ .ConfirmationURL }}` if you also want a clickable magic link (works on **web**; native prefers the code).
-3. **Authentication** → **URL Configuration** — add redirect allowlist entries, for example:
-   - `socbizmap://`
-   - `http://localhost:8081/`
-   - your Expo web origin
-4. Client: `signInWithOtp({ email })` then `verifyOtp({ email, token, type: 'email' })`. Magic-link clicks on web are picked up (`detectSessionInUrl` on web only).
-5. Expo flag `EXPO_PUBLIC_AUTH_EMAIL=1` shows the email field immediately. Without the flag, the email field appears after a failed SMS send, or via «Не приходить SMS? Увійти через email».
-6. First successful email OTP creates `auth.users` → trigger `handle_new_user` inserts `profiles` with `phone` null and `email` set. Pin **contact** phone is still `+380` on the create-pin form (login identity can be email).
+2. Do **not** expect to paste `{{ .Token }}` on Free. The app waits after «Надіслати посилання» and completes sign-in when the user opens **ConfirmationURL** (web redirect or `socbizmap://` / Expo deep link). Copy: *«Надіслали посилання на пошту — відкрий лист і натисни увійти»*.
+3. **Authentication** → **URL Configuration** — add redirect allowlist entries:
+   - `http://localhost:8081/auth/callback`
+   - `socbizmap://auth/callback`
+   - your Expo web origin + `/auth/callback`
+4. Client: `signInWithOtp({ email, options: { emailRedirectTo } })`. The click hits `/auth/callback` with PKCE `code` or `access_token` in the URL. `consumeAuthUrl` + `detectSessionInUrl` (web) create the session. **No** `verifyOtp` for this path.
+5. Digit OTP (`verifyOtp` + field «Код з листа») is **only** for:
+   - **mock** (no env) — code `123456`
+   - live, after you add **custom SMTP** or upgrade to **Pro**, edit Magic Link to include `{{ .Token }}`, and set `EXPO_PUBLIC_AUTH_EMAIL_OTP=1`
+6. Expo flag `EXPO_PUBLIC_AUTH_EMAIL=1` shows the email field immediately. Without the flag, the field appears after a failed SMS send, or via «Не приходить SMS? Увійти через email».
+7. First successful magic-link (or OTP) creates `auth.users` → trigger `handle_new_user` inserts `profiles` with `phone` null and `email` set. Pin **contact** phone is still `+380` on the create-pin form.
 
 Confirm sign-ups that require a password are not used.
 
@@ -76,6 +80,12 @@ Set:
 EXPO_PUBLIC_SUPABASE_URL=https://mutfwhenuegvdwhgwnty.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<Dashboard → Project Settings → API → anon public>
 EXPO_PUBLIC_AUTH_EMAIL=1
+```
+
+Optional, **not** for Free (templates cannot include `{{ .Token }}` until custom SMTP or Pro):
+
+```
+EXPO_PUBLIC_AUTH_EMAIL_OTP=1
 ```
 
 Restart Expo (`npx expo start`) so `EXPO_PUBLIC_*` is inlined. The client reads these in `src/lib/supabase.ts`. JWT session uses `expo-secure-store` on native and `localStorage` on web.
@@ -128,4 +138,4 @@ npx expo start
 
 No `.env` required. Create a pin after mock OTP; it stays `pending` and is absent from the public map until an admin (`+380500000000`) sets `live`.
 
-Email mock: on login choose «Увійти через email», any valid address, code `123456`.
+Email mock: on login choose «Увійти через email», any valid address, **digit code** `123456`. Live Free uses the magic-link wait screen instead of that field.
