@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -10,18 +10,32 @@ import { colors } from '@/src/theme';
 /** Landing path for Supabase ConfirmationURL (Free plan: link-only, no {{ .Token }}). */
 export default function AuthCallbackScreen() {
   const { session, ready, authLinkError } = useData();
+  const params = useLocalSearchParams<{
+    error?: string;
+    error_description?: string;
+    error_code?: string;
+  }>();
+  const urlError =
+    (typeof params.error_description === 'string' ? params.error_description : params.error_description?.[0]) ||
+    (typeof params.error === 'string' ? params.error : params.error?.[0]) ||
+    (typeof params.error_code === 'string' ? params.error_code : params.error_code?.[0]) ||
+    null;
+  const displayError = authLinkError ?? urlError;
 
   useEffect(() => {
     if (!ready) return;
-    if (session) router.replace('/start');
-  }, [ready, session]);
+    if (session && !displayError) router.replace('/start');
+  }, [ready, session, displayError]);
 
-  if (authLinkError) {
+  if (displayError) {
     return (
       <Screen>
         <Title>{t('login')}</Title>
-        <Body style={styles.err}>{authLinkError}</Body>
-        <PrimaryButton label={t('login')} onPress={() => router.replace('/login')} />
+        <Body style={styles.err}>{displayError}</Body>
+        <Muted>{t('authCallbackError')}</Muted>
+        <View style={styles.back}>
+          <PrimaryButton label={t('login')} onPress={() => router.replace('/login')} />
+        </View>
       </Screen>
     );
   }

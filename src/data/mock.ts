@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { haversineMeters, isValidUaPhone, kyivMonthKey } from '@/src/geo';
 import { t } from '@/src/i18n';
+import { parseAuthCallbackUrl } from '@/src/lib/auth-callback';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 
 import {
@@ -443,8 +444,14 @@ export function createMockApi(): DataApi {
     },
 
     async consumeAuthUrl(url) {
-      void url;
       await ensureLoaded();
+      const params = parseAuthCallbackUrl(url);
+      if (params.error || params.error_description) {
+        throw new DataError(
+          params.error ?? 'AUTH_CALLBACK',
+          params.error_description ?? t('authCallbackError'),
+        );
+      }
       return mem.session;
     },
 
