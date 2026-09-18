@@ -131,6 +131,8 @@ export type DataApi = {
   verifyOtp(phone: string, code: string): Promise<Session>;
   sendEmailOtp(email: string): Promise<void>;
   verifyEmailOtp(email: string, code: string): Promise<Session>;
+  /** Complete a magic-link / PKCE redirect. No-op when the URL has no auth params. */
+  consumeAuthUrl(url: string): Promise<Session | null>;
   signOut(): Promise<void>;
   getProfile(userId?: string): Promise<Profile | null>;
   updateProfile(patch: Partial<Pick<Profile, 'displayName' | 'radiusKm' | 'vertical' | 'defaultMode' | 'lastGeog'>>): Promise<Profile>;

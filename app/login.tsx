@@ -6,7 +6,7 @@ import { Body, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
 import { DataError } from '@/src/data';
 import { isValidUaPhone, normalizeUaPhone } from '@/src/geo';
 import { t } from '@/src/i18n';
-import { isEmailAuthFlagEnabled } from '@/src/lib/auth-flags';
+import { isEmailAuthFlagEnabled, isEmailOtpUiEnabled } from '@/src/lib/auth-flags';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -26,6 +26,7 @@ export default function LoginScreen() {
   const [smsFailed, setSmsFailed] = useState(false);
 
   const phone = normalizeUaPhone(phoneTail.startsWith('+') ? phoneTail : `+380${phoneTail}`);
+  const emailOtp = isEmailOtpUiEnabled(backend);
 
   useEffect(() => {
     if (session) router.replace('/start');
@@ -140,14 +141,23 @@ export default function LoginScreen() {
 
       {!sent ? (
         <PrimaryButton
-          label={channel === 'email' ? t('sendEmailOtp') : t('sendOtp')}
+          label={channel === 'email' ? (emailOtp ? t('sendEmailOtp') : t('sendEmailLink')) : t('sendOtp')}
           disabled={busy}
           onPress={() => void (channel === 'email' ? sendEmail() : sendPhone())}
         />
+      ) : channel === 'email' && !emailOtp ? (
+        <View style={styles.gap}>
+          <Body style={styles.linkSent}>{t('emailLinkSent')}</Body>
+          <Muted style={styles.sentHint}>{t('emailLinkWait')}</Muted>
+        </View>
       ) : (
         <View style={styles.gap}>
           <Body style={styles.label}>{channel === 'email' ? t('otpEmail') : t('otp')}</Body>
-          {channel === 'email' ? <Muted style={styles.sentHint}>{t('emailSentHint')}</Muted> : null}
+          {channel === 'email' ? (
+            <Muted style={styles.sentHint}>
+              {backend === 'supabase' ? t('emailLinkSent') : t('emailSentHint')}
+            </Muted>
+          ) : null}
           <TextInput
             style={styles.inputFull}
             keyboardType="number-pad"
@@ -182,7 +192,7 @@ export default function LoginScreen() {
           }}
           style={styles.switch}
         >
-          <Muted>Надіслати ще раз</Muted>
+          <Muted>{t('resend')}</Muted>
         </Pressable>
       )}
 
@@ -200,7 +210,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   hint: { marginTop: 8, marginBottom: 24 },
-  label: { marginBottom: 6, fontWeight: '600' },
+  label: { marginBottom: 6, fontWeight: '700' },
   phoneRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 },
   prefix: { fontWeight: '700' },
   input: {
@@ -227,6 +237,7 @@ const styles = StyleSheet.create({
   },
   gap: { marginTop: 8 },
   sentHint: { marginBottom: 8 },
+  linkSent: { fontSize: 17, lineHeight: 24, marginBottom: 8 },
   err: { color: colors.danger, marginTop: 12 },
   warn: { color: colors.warn, marginBottom: 12 },
   switch: { marginTop: 16, paddingVertical: 8 },

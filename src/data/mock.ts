@@ -442,6 +442,12 @@ export function createMockApi(): DataApi {
       return mem.session;
     },
 
+    async consumeAuthUrl(url) {
+      void url;
+      await ensureLoaded();
+      return mem.session;
+    },
+
     async signOut() {
       await ensureLoaded();
       if (mem.session) {

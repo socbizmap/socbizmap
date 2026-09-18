@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
 import { t } from '@/src/i18n';
+import { isAuthCallbackUrl, parseAuthCallbackUrl } from '@/src/lib/auth-callback';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { getSupabase } from '@/src/lib/supabase';
 
@@ -153,9 +154,9 @@ function wrapError(err: { message?: string; code?: string } | null, fallback: st
 
 function emailRedirectTo(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}/`;
+    return `${window.location.origin}/auth/callback`;
   }
-  return Linking.createURL('/');
+  return Linking.createURL('/auth/callback');
 }
 
 async function loadMedia(sb: SupabaseClient, pinId: string): Promise<PinMedia[]> {
@@ -225,6 +226,32 @@ export function createSupabaseApi(): DataApi {
       });
       if (error || !data.session) wrapError(error, 'Невірний код');
       return mapSession(data.session)!;
+    },
+
+    async consumeAuthUrl(url) {
+      if (!isAuthCallbackUrl(url)) return mapSession((await sb.auth.getSession()).data.session);
+      const params = parseAuthCallbackUrl(url);
+      if (params.error || params.error_description) {
+        throw new DataError(
+          params.error ?? 'AUTH_CALLBACK',
+          params.error_description ?? t('authCallbackError'),
+        );
+      }
+      if (params.code) {
+        const { data, error } = await sb.auth.exchangeCodeForSession(params.code);
+        if (error || !data.session) wrapError(error, t('authCallbackError'));
+        return mapSession(data.session)!;
+      }
+      if (params.access_token && params.refresh_token) {
+        const { data, error } = await sb.auth.setSession({
+          access_token: params.access_token,
+          refresh_token: params.refresh_token,
+        });
+        if (error || !data.session) wrapError(error, t('authCallbackError'));
+        return mapSession(data.session)!;
+      }
+      const { data } = await sb.auth.getSession();
+      return mapSession(data.session);
     },
 
     async signOut() {

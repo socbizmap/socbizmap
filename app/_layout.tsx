@@ -1,8 +1,11 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 
 import { DataProvider } from '@/src/session';
 import { colors } from '@/src/theme';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export {
   ErrorBoundary,
@@ -22,6 +25,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ title: 'SocBizMap' }} />
+        <Stack.Screen name="auth/callback" options={{ title: 'SocBizMap', headerBackVisible: false }} />
         <Stack.Screen name="start" options={{ title: 'SocBizMap', headerBackVisible: false }} />
         <Stack.Screen name="map" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="pin/[id]" options={{ title: 'SocBizMap' }} />

@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Body, GhostButton, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
@@ -7,7 +8,12 @@ import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
 
 export default function SplashScreen() {
-  const { backend } = useData();
+  const { backend, session, ready } = useData();
+
+  useEffect(() => {
+    if (ready && session) router.replace('/start');
+  }, [ready, session]);
+
   return (
     <Screen style={styles.wrap}>
       <View style={styles.hero}>
