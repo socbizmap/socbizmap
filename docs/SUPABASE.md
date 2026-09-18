@@ -13,12 +13,13 @@ If either variable is missing or empty, the app uses the **mock** data layer (As
 SQL files live in `supabase/migrations/` and are ordered by filename:
 
 1. `supabase/migrations/20260917120000_init.sql` — PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), storage buckets `avatars` + `pin-media`.
-2. `supabase/migrations/20260917220000_smoke_fixes.sql` — **already applied live** (2026-09-17). Re-run is safe (`create or replace` / `drop policy if exists`).
+2. `supabase/migrations/20260917220000_smoke_fixes.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-17). Re-run is safe (`create or replace` / `drop policy if exists`).
+3. `supabase/migrations/20260918200000_normalize_auth_phone.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-18). Replaces `handle_new_user` (`create or replace`).
 
 ### SQL editor (fastest)
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → project `mutfwhenuegvdwhgwnty` → **SQL Editor**.
-2. Paste each file in filename order (skip `20260917220000_smoke_fixes.sql` if this project already has it).
+2. Paste each file in filename order (skip files already applied on this live project).
 3. Init is safe to re-run: enums/tables use `if not exists` / `duplicate_object` guards; policies are dropped then created.
 
 ### CLI
@@ -38,6 +39,7 @@ In Dashboard → **Authentication** → **Providers** (or **Auth** → **Provide
 1. Enable **Phone** (SMS OTP). Supabase sends via **Twilio** — set the Twilio credentials there, not in this repo.
 2. Restrict to Ukraine `+380` if the provider allows a country allowlist.
 3. Registration = first successful OTP; trigger `handle_new_user` inserts `profiles`.
+4. Auth may store the phone **without a leading `+`** (digits only, e.g. `380…`). `handle_new_user` normalizes to E.164 **`+380` + 9 digits** before the `profiles` insert. Values that are not `+380` and 9 digits are stored as `null`.
 
 There is no password and no Google/Apple/Facebook in v1.
 
