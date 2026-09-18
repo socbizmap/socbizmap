@@ -28,6 +28,7 @@ export type GeoPoint = { lat: number; lng: number };
 export type Profile = {
   id: string;
   phone: string | null;
+  email: string | null;
   displayName: string;
   avatarUrl: string | null;
   defaultMode: PinKind;
@@ -46,6 +47,7 @@ export type Profile = {
 export type Session = {
   userId: string;
   phone: string | null;
+  email: string | null;
 };
 
 export type PinMedia = {
@@ -127,6 +129,8 @@ export type DataApi = {
   onAuthChange(cb: (session: Session | null) => void): () => void;
   sendOtp(phone: string): Promise<void>;
   verifyOtp(phone: string, code: string): Promise<Session>;
+  sendEmailOtp(email: string): Promise<void>;
+  verifyEmailOtp(email: string, code: string): Promise<Session>;
   signOut(): Promise<void>;
   getProfile(userId?: string): Promise<Profile | null>;
   updateProfile(patch: Partial<Pick<Profile, 'displayName' | 'radiusKm' | 'vertical' | 'defaultMode' | 'lastGeog'>>): Promise<Profile>;

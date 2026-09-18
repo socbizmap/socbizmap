@@ -1,6 +1,9 @@
 import type { Session as SbSession, SupabaseClient } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 
 import { t } from '@/src/i18n';
+import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { getSupabase } from '@/src/lib/supabase';
 
 import {
@@ -44,6 +47,7 @@ type PinRow = {
 type ProfileRow = {
   id: string;
   phone: string | null;
+  email?: string | null;
   display_name: string;
   avatar_url: string | null;
   default_mode: PinKind;
@@ -74,13 +78,18 @@ function requireClient(): SupabaseClient {
 
 function mapSession(s: SbSession | null): Session | null {
   if (!s?.user) return null;
-  return { userId: s.user.id, phone: s.user.phone ?? null };
+  return {
+    userId: s.user.id,
+    phone: s.user.phone ?? null,
+    email: s.user.email ?? null,
+  };
 }
 
 function mapProfile(row: ProfileRow): Profile {
   return {
     id: row.id,
     phone: row.phone,
+    email: row.email ?? null,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     defaultMode: row.default_mode,
@@ -142,6 +151,13 @@ function wrapError(err: { message?: string; code?: string } | null, fallback: st
   throw new DataError(err?.code ?? 'SUPABASE', message);
 }
 
+function emailRedirectTo(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/`;
+  }
+  return Linking.createURL('/');
+}
+
 async function loadMedia(sb: SupabaseClient, pinId: string): Promise<PinMedia[]> {
   const { data, error } = await sb
     .from('pin_media')
@@ -181,6 +197,32 @@ export function createSupabaseApi(): DataApi {
 
     async verifyOtp(phone, code) {
       const { data, error } = await sb.auth.verifyOtp({ phone, token: code, type: 'sms' });
+      if (error || !data.session) wrapError(error, 'Невірний код');
+      return mapSession(data.session)!;
+    },
+
+    async sendEmailOtp(email) {
+      const normalized = normalizeEmail(email);
+      if (!isValidEmail(normalized)) {
+        throw new DataError('BAD_EMAIL', 'Некоректний email');
+      }
+      const { error } = await sb.auth.signInWithOtp({
+        email: normalized,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: emailRedirectTo(),
+        },
+      });
+      if (error) wrapError(error, 'Не вдалося надіслати лист');
+    },
+
+    async verifyEmailOtp(email, code) {
+      const normalized = normalizeEmail(email);
+      const { data, error } = await sb.auth.verifyOtp({
+        email: normalized,
+        token: code,
+        type: 'email',
+      });
       if (error || !data.session) wrapError(error, 'Невірний код');
       return mapSession(data.session)!;
     },

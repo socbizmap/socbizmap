@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -30,6 +30,10 @@ export default function MapScreen() {
   const [originMode, setOriginMode] = useState<'gps' | 'map'>('gps');
   const [picking, setPicking] = useState(false);
   const [pins, setPins] = useState<Pin[]>([]);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
+  const [alertsOn, setAlertsOn] = useState(false);
+  const [alertNote, setAlertNote] = useState<string | null>(null);
+  const [gpsTick, setGpsTick] = useState(0);
   const radiusKm = profile?.radiusKm ?? 10;
 
   useLayoutEffect(() => {
@@ -42,30 +46,35 @@ export default function MapScreen() {
     });
   }, [navigation, view]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (originMode !== 'gps') return;
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          if (!cancelled) setOrigin(KHARKIV);
-          return;
-        }
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (!cancelled) {
-          const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          // Pilot is Харківська only — GPS outside the oblast uses Харків fallback (same as deny).
-          setOrigin(inPilotOblast(next.lat, next.lng) ? next : KHARKIV);
-        }
-      } catch {
-        if (!cancelled) setOrigin(KHARKIV);
+  const locateMe = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setOrigin(KHARKIV);
+        setGpsNote(t('gpsDenied'));
+        return { ok: false as const, reason: 'denied' as const, origin: KHARKIV };
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [originMode]);
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (inPilotOblast(next.lat, next.lng)) {
+        setOrigin(next);
+        setGpsNote(null);
+        return { ok: true as const, origin: next };
+      }
+      setOrigin(KHARKIV);
+      setGpsNote(t('gpsOutsidePilot'));
+      return { ok: false as const, reason: 'outside' as const, origin: KHARKIV };
+    } catch {
+      setOrigin(KHARKIV);
+      setGpsNote(t('gpsDenied'));
+      return { ok: false as const, reason: 'error' as const, origin: KHARKIV };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (originMode !== 'gps') return;
+    void locateMe();
+  }, [originMode, gpsTick, locateMe]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +105,58 @@ export default function MapScreen() {
     setOrigin({ lat, lng });
     setOriginMode('map');
     setPicking(false);
+    setGpsNote(null);
   }
+
+  function nearMe() {
+    setPicking(false);
+    setOriginMode('gps');
+    setGpsTick((n) => n + 1);
+  }
+
+  async function enableAlerts() {
+    setAlertNote(null);
+    const result = await locateMe();
+    setOriginMode('gps');
+    if (!result.ok && result.reason === 'denied') {
+      setAlertNote(t('alertsNeedLocation'));
+      return;
+    }
+    if (session) {
+      try {
+        await api.updateProfile({ lastGeog: result.origin });
+      } catch {
+        // location still used as map origin
+      }
+    }
+    const webNotify = (globalThis as { Notification?: { requestPermission?: () => Promise<string> } })
+      .Notification;
+    if (webNotify?.requestPermission) {
+      try {
+        await webNotify.requestPermission();
+      } catch {
+        // native Expo push tokens are week 2
+      }
+    }
+    setAlertsOn(true);
+    setAlertNote(t('alertsOn'));
+  }
+
+  const emptyCta = (
+    <View style={styles.emptyBox}>
+      <Text style={styles.emptyText}>{t('noPinsNearby')}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('enableAlerts')}
+        onPress={() => void enableAlerts()}
+        style={styles.bell}
+      >
+        <Text style={styles.bellGlyph}>{alertsOn ? '✅' : '🔔'}</Text>
+        <Text style={styles.bellLabel}>{t('enableAlerts')}</Text>
+      </Pressable>
+      {alertNote ? <Muted style={styles.alertNote}>{alertNote}</Muted> : null}
+    </View>
+  );
 
   return (
     <Screen style={styles.screen}>
@@ -113,22 +173,22 @@ export default function MapScreen() {
         onChangeText={setSearch}
       />
       <View style={styles.chipRow}>
+        <Pressable accessibilityRole="button" onPress={nearMe} style={styles.nearMe}>
+          <Text style={styles.nearMeText}>{t('nearMe')}</Text>
+        </Pressable>
         <Chip
           label={originMode === 'gps' ? t('fromHere') : t('fromMap')}
           selected
-          onPress={() => {
-            setOriginMode('gps');
-            setOrigin(KHARKIV);
-          }}
+          onPress={nearMe}
         />
         <Chip label={t('pickOnMap')} selected={picking} onPress={() => setPicking(true)} />
       </View>
+      {gpsNote ? <Muted style={styles.gpsNote}>{gpsNote}</Muted> : null}
       {view === 'map' ? (
         <Pressable
           style={styles.plot}
           onPress={(e) => {
             const { locationX, locationY } = e.nativeEvent;
-            // Approximate inverse of projectToPilot on a 1:1 plot; refined on layout below via percentages
             const w = plotSize.w || 1;
             const h = plotSize.h || 1;
             const x = locationX / w;
@@ -157,16 +217,13 @@ export default function MapScreen() {
             return <View style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />;
           })()}
           <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
+          {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
         </Pressable>
       ) : (
         <ScrollView style={styles.list}>
-          {pins.length === 0 ? (
-            <Muted style={styles.empty}>{t('noPinsNearby')}</Muted>
-          ) : (
-            pins.map((p) => (
-              <PinRow key={p.id} pin={p} onPress={() => router.push(`/pin/${p.id}`)} />
-            ))
-          )}
+          {pins.length === 0 ? emptyCta : pins.map((p) => (
+            <PinRow key={p.id} pin={p} onPress={() => router.push(`/pin/${p.id}`)} />
+          ))}
         </ScrollView>
       )}
       <View style={styles.footer}>
@@ -205,7 +262,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' },
+  nearMe: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  nearMeText: { color: '#fff', fontWeight: '700' },
+  gpsNote: { marginBottom: 8 },
   plot: {
     flex: 1,
     backgroundColor: colors.map,
@@ -215,6 +282,37 @@ const styles = StyleSheet.create({
     minHeight: 280,
   },
   plotHint: { position: 'absolute', left: 12, bottom: 12 },
+  mapEmpty: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(240, 253, 250, 0.82)',
+    padding: 16,
+  },
+  emptyBox: { alignItems: 'center', gap: 12, marginTop: 24, paddingHorizontal: 12 },
+  emptyText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  bell: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    minWidth: 180,
+  },
+  bellGlyph: { fontSize: 28, marginBottom: 4 },
+  bellLabel: { color: colors.primaryDark, fontWeight: '700' },
+  alertNote: { textAlign: 'center' },
   dot: {
     position: 'absolute',
     width: 14,
@@ -238,7 +336,6 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   list: { flex: 1 },
-  empty: { marginTop: 24, textAlign: 'center' },
   footer: { marginTop: 12, gap: 8 },
   profileLink: { alignItems: 'center', padding: 8 },
   profileText: { color: colors.primaryDark, fontWeight: '700' },

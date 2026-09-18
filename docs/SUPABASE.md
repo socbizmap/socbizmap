@@ -5,8 +5,9 @@ Expo env (public only — never commit the anon key):
 
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `EXPO_PUBLIC_AUTH_EMAIL` — set to `1` to show email OTP / magic-link on login immediately (also auto-shown if SMS send fails)
 
-If either variable is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456`. Admin mock phone: `+380500000000`.
+If either URL or anon key is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456` (phone **and** email). Admin mock phone: `+380500000000`.
 
 ## 1. Apply migrations
 
@@ -15,6 +16,7 @@ SQL files live in `supabase/migrations/` and are ordered by filename:
 1. `supabase/migrations/20260917120000_init.sql` — PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), storage buckets `avatars` + `pin-media`.
 2. `supabase/migrations/20260917220000_smoke_fixes.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-17). Re-run is safe (`create or replace` / `drop policy if exists`).
 3. `supabase/migrations/20260918200000_normalize_auth_phone.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-18). Replaces `handle_new_user` (`create or replace`).
+4. `supabase/migrations/20260918210000_email_auth_profile.sql` — **apply on live** (email column on `profiles`, unique email, `handle_new_user` for email-only users). Re-run is safe.
 
 ### SQL editor (fastest)
 
@@ -32,16 +34,35 @@ npx supabase db push
 
 Do not put the service role key in this repo.
 
-## 2. Auth — Phone OTP (Twilio)
+## 2. Auth — Phone SMS (paused) vs email
 
-In Dashboard → **Authentication** → **Providers** (or **Auth** → **Providers**):
+### Phone OTP (Twilio) — blocked until Trust Hub KYC
 
-1. Enable **Phone** (SMS OTP). Supabase sends via **Twilio** — set the Twilio credentials there, not in this repo.
-2. Restrict to Ukraine `+380` if the provider allows a country allowlist.
-3. Registration = first successful OTP; trigger `handle_new_user` inserts `profiles`.
-4. Auth may store the phone **without a leading `+`** (digits only, e.g. `380…`). `handle_new_user` normalizes to E.164 **`+380` + 9 digits** before the `profiles` insert. Values that are not `+380` and 9 digits are stored as `null`.
+Dashboard → **Authentication** → **Providers** → **Phone**.
+
+1. Phone is **Enabled** and wired to **Twilio**, but **SMS does not send** until Twilio **Trust Hub / Persona KYC** is approved (passport). Soft-launch is **paused on SMS**, not on Auth Phone itself.
+2. When KYC is done: restrict to Ukraine `+380` if the provider allows a country allowlist.
+3. Auth may store the phone **without a leading `+`**. `handle_new_user` still normalizes to E.164 **`+380` + 9 digits** before the `profiles` insert. Values that are not `+380` and 9 digits are stored as `null`.
 
 There is no password and no Google/Apple/Facebook in v1.
+
+### Email magic-link / email OTP — live path without Twilio
+
+Email is **enabled by default** in Supabase Auth. It does **not** use Twilio. Soft-launch login while SMS is down:
+
+1. Dashboard → **Authentication** → **Providers** → **Email** — leave enabled.
+2. **Authentication** → **Email Templates** → **Magic Link**:
+   - Include `{{ .Token }}` so the letter has a **6-digit code** (app field «Надіслати код/посилання» + «Код з листа»).
+   - Keep `{{ .ConfirmationURL }}` if you also want a clickable magic link (works on **web**; native prefers the code).
+3. **Authentication** → **URL Configuration** — add redirect allowlist entries, for example:
+   - `socbizmap://`
+   - `http://localhost:8081/`
+   - your Expo web origin
+4. Client: `signInWithOtp({ email })` then `verifyOtp({ email, token, type: 'email' })`. Magic-link clicks on web are picked up (`detectSessionInUrl` on web only).
+5. Expo flag `EXPO_PUBLIC_AUTH_EMAIL=1` shows the email field immediately. Without the flag, the email field appears after a failed SMS send, or via «Не приходить SMS? Увійти через email».
+6. First successful email OTP creates `auth.users` → trigger `handle_new_user` inserts `profiles` with `phone` null and `email` set. Pin **contact** phone is still `+380` on the create-pin form (login identity can be email).
+
+Confirm sign-ups that require a password are not used.
 
 ## 3. Expo env
 
@@ -54,6 +75,7 @@ Set:
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://mutfwhenuegvdwhgwnty.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<Dashboard → Project Settings → API → anon public>
+EXPO_PUBLIC_AUTH_EMAIL=1
 ```
 
 Restart Expo (`npx expo start`) so `EXPO_PUBLIC_*` is inlined. The client reads these in `src/lib/supabase.ts`. JWT session uses `expo-secure-store` on native and `localStorage` on web.
@@ -105,3 +127,5 @@ npx expo start
 ```
 
 No `.env` required. Create a pin after mock OTP; it stays `pending` and is absent from the public map until an admin (`+380500000000`) sets `live`.
+
+Email mock: on login choose «Увійти через email», any valid address, code `123456`.
