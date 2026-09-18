@@ -1,26 +1,37 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Linking, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import { Body, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
 import { DataError } from '@/src/data';
 import { isValidUaPhone, normalizeUaPhone } from '@/src/geo';
 import { t } from '@/src/i18n';
-import { Body, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
+import { isEmailAuthFlagEnabled } from '@/src/lib/auth-flags';
+import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
 
 export default function LoginScreen() {
-  const { api, backend } = useData();
+  const { api, backend, session } = useData();
   const params = useLocalSearchParams<{ mode?: string }>();
   const [phoneTail, setPhoneTail] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
+  const [channel, setChannel] = useState<'phone' | 'email'>(
+    isEmailAuthFlagEnabled() ? 'email' : 'phone',
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [smsFailed, setSmsFailed] = useState(false);
 
   const phone = normalizeUaPhone(phoneTail.startsWith('+') ? phoneTail : `+380${phoneTail}`);
 
-  async function send() {
+  useEffect(() => {
+    if (session) router.replace('/start');
+  }, [session]);
+
+  async function sendPhone() {
     setError(null);
     const normalized = normalizeUaPhone(phone);
     if (!isValidUaPhone(normalized)) {
@@ -31,8 +42,32 @@ export default function LoginScreen() {
     try {
       await api.sendOtp(normalized);
       setSent(true);
+      setChannel('phone');
     } catch (e) {
-      setError(e instanceof DataError ? e.message : 'Помилка OTP');
+      const message = e instanceof DataError ? e.message : 'Помилка OTP';
+      setSmsFailed(true);
+      setChannel('email');
+      setSent(false);
+      setError(`${t('smsUnavailable')} ${message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendEmail() {
+    setError(null);
+    const normalized = normalizeEmail(email);
+    if (!isValidEmail(normalized)) {
+      setError('Некоректний email');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.sendEmailOtp(normalized);
+      setSent(true);
+      setChannel('email');
+    } catch (e) {
+      setError(e instanceof DataError ? e.message : 'Помилка листа');
     } finally {
       setBusy(false);
     }
@@ -42,7 +77,11 @@ export default function LoginScreen() {
     setError(null);
     setBusy(true);
     try {
-      await api.verifyOtp(normalizeUaPhone(phone), code.trim());
+      if (channel === 'email') {
+        await api.verifyEmailOtp(normalizeEmail(email), code.trim());
+      } else {
+        await api.verifyOtp(normalizeUaPhone(phone), code.trim());
+      }
       router.replace('/start');
     } catch (e) {
       setError(e instanceof DataError ? e.message : 'Помилка коду');
@@ -51,30 +90,64 @@ export default function LoginScreen() {
     }
   }
 
+  const showEmail = channel === 'email' || isEmailAuthFlagEnabled() || smsFailed;
+  const showPhone = channel === 'phone' || !showEmail || isEmailAuthFlagEnabled();
+
   return (
     <Screen>
+      <ScrollView keyboardShouldPersistTaps="handled">
       <Title>{params.mode === 'register' ? t('register') : t('login')}</Title>
       <Muted style={styles.hint}>
         {backend === 'supabase' ? t('liveHint') : t('mockHint')}
       </Muted>
-      <Body style={styles.label}>{t('phone')}</Body>
-      <View style={styles.phoneRow}>
-        <Body style={styles.prefix}>+380</Body>
-        <TextInput
-          style={styles.input}
-          keyboardType="phone-pad"
-          placeholder="501234567"
-          placeholderTextColor={colors.muted}
-          value={phoneTail.replace(/^\+380/, '')}
-          onChangeText={(v) => setPhoneTail(v.replace(/\D/g, '').slice(0, 9))}
-          maxLength={9}
-        />
-      </View>
+
+      {showPhone && channel === 'phone' ? (
+        <>
+          <Body style={styles.label}>{t('phone')}</Body>
+          <View style={styles.phoneRow}>
+            <Body style={styles.prefix}>+380</Body>
+            <TextInput
+              style={styles.input}
+              keyboardType="phone-pad"
+              placeholder="501234567"
+              placeholderTextColor={colors.muted}
+              value={phoneTail.replace(/^\+380/, '')}
+              onChangeText={(v) => setPhoneTail(v.replace(/\D/g, '').slice(0, 9))}
+              maxLength={9}
+              editable={!sent}
+            />
+          </View>
+        </>
+      ) : null}
+
+      {showEmail && channel === 'email' ? (
+        <>
+          {smsFailed ? <Body style={styles.warn}>{t('smsUnavailable')}</Body> : null}
+          <Body style={styles.label}>{t('email')}</Body>
+          <TextInput
+            style={styles.inputFull}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="name@example.com"
+            placeholderTextColor={colors.muted}
+            value={email}
+            onChangeText={setEmail}
+            editable={!sent}
+          />
+        </>
+      ) : null}
+
       {!sent ? (
-        <PrimaryButton label={t('sendOtp')} disabled={busy} onPress={() => void send()} />
+        <PrimaryButton
+          label={channel === 'email' ? t('sendEmailOtp') : t('sendOtp')}
+          disabled={busy}
+          onPress={() => void (channel === 'email' ? sendEmail() : sendPhone())}
+        />
       ) : (
         <View style={styles.gap}>
-          <Body style={styles.label}>{t('otp')}</Body>
+          <Body style={styles.label}>{channel === 'email' ? t('otpEmail') : t('otp')}</Body>
+          {channel === 'email' ? <Muted style={styles.sentHint}>{t('emailSentHint')}</Muted> : null}
           <TextInput
             style={styles.inputFull}
             keyboardType="number-pad"
@@ -87,6 +160,32 @@ export default function LoginScreen() {
           <PrimaryButton label={t('verifyOtp')} disabled={busy} onPress={() => void verify()} />
         </View>
       )}
+
+      {!sent ? (
+        <Pressable
+          onPress={() => {
+            setError(null);
+            setSent(false);
+            setCode('');
+            setChannel((c) => (c === 'email' ? 'phone' : 'email'));
+          }}
+          style={styles.switch}
+        >
+          <Muted>{channel === 'email' ? t('usePhone') : t('useEmail')}</Muted>
+        </Pressable>
+      ) : (
+        <Pressable
+          onPress={() => {
+            setSent(false);
+            setCode('');
+            setError(null);
+          }}
+          style={styles.switch}
+        >
+          <Muted>Надіслати ще раз</Muted>
+        </Pressable>
+      )}
+
       {error ? <Body style={styles.err}>{error}</Body> : null}
       <View style={styles.links}>
         <Muted onPress={() => void Linking.openURL('https://socbizmap.com')}>
@@ -94,6 +193,7 @@ export default function LoginScreen() {
         </Muted>
         <Muted>{t('tm')}</Muted>
       </View>
+      </ScrollView>
     </Screen>
   );
 }
@@ -126,6 +226,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   gap: { marginTop: 8 },
+  sentHint: { marginBottom: 8 },
   err: { color: colors.danger, marginTop: 12 },
+  warn: { color: colors.warn, marginBottom: 12 },
+  switch: { marginTop: 16, paddingVertical: 8 },
   links: { marginTop: 32, gap: 8 },
 });

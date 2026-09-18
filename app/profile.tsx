@@ -41,7 +41,7 @@ export default function ProfileScreen() {
     <Screen>
       <ScrollView>
         <Title>{profile.displayName}</Title>
-        <Muted>{profile.phone}</Muted>
+        <Muted>{profile.phone ?? profile.email ?? session?.email}</Muted>
         <Muted>
           ★ {profile.ratingAvg.toFixed(1)} ({profile.ratingCount}) · радіус {profile.radiusKm} км
         </Muted>

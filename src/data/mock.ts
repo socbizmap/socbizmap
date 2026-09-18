@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { haversineMeters, isValidUaPhone, kyivMonthKey } from '@/src/geo';
 import { t } from '@/src/i18n';
+import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 
 import {
   DataError,
@@ -18,6 +19,7 @@ export const MOCK_OTP = '123456';
 type MockState = {
   session: Session | null;
   pendingPhone: string | null;
+  pendingEmail: string | null;
   profiles: Profile[];
   pins: Pin[];
   replies: { pinId: string; authorId: string }[];
@@ -28,6 +30,7 @@ type MockState = {
 const empty: MockState = {
   session: null,
   pendingPhone: null,
+  pendingEmail: null,
   profiles: [],
   pins: [],
   replies: [],
@@ -52,6 +55,7 @@ function seed(state: MockState): MockState {
   const employer: Profile = {
     id: 'mock-employer',
     phone: '+380501000001',
+    email: null,
     displayName: 'ТОВ Приклад',
     avatarUrl: null,
     defaultMode: 'offer',
@@ -69,6 +73,7 @@ function seed(state: MockState): MockState {
   const seeker: Profile = {
     id: 'mock-seeker',
     phone: '+380501000002',
+    email: null,
     displayName: 'Олена',
     avatarUrl: null,
     defaultMode: 'seek',
@@ -86,6 +91,7 @@ function seed(state: MockState): MockState {
   const master: Profile = {
     id: 'mock-master',
     phone: '+380501000003',
+    email: null,
     displayName: 'Сергій',
     avatarUrl: null,
     defaultMode: 'offer',
@@ -103,6 +109,7 @@ function seed(state: MockState): MockState {
   const admin: Profile = {
     id: 'mock-admin',
     phone: '+380500000000',
+    email: null,
     displayName: 'Модератор',
     avatarUrl: null,
     defaultMode: 'seek',
@@ -272,6 +279,17 @@ async function ensureLoaded(): Promise<void> {
           const parsed = JSON.parse(raw) as MockState;
           if (parsed?.pins?.length) {
             mem = parsed;
+            mem.pendingEmail = mem.pendingEmail ?? null;
+            mem.profiles = (mem.profiles ?? []).map((p) => ({
+              ...p,
+              email: p.email ?? null,
+            }));
+            if (mem.session) {
+              mem.session = {
+                ...mem.session,
+                email: mem.session.email ?? null,
+              };
+            }
           }
         }
       } catch {
@@ -352,6 +370,7 @@ export function createMockApi(): DataApi {
         profile = {
           id: uid(),
           phone,
+          email: null,
           displayName: 'Користувач',
           avatarUrl: null,
           defaultMode: 'seek',
@@ -368,7 +387,55 @@ export function createMockApi(): DataApi {
         };
         mem.profiles.push(profile);
       }
-      mem.session = { userId: profile.id, phone: profile.phone };
+      mem.session = { userId: profile.id, phone: profile.phone, email: profile.email };
+      mem.pendingPhone = null;
+      mem.pendingEmail = null;
+      await persist();
+      notify();
+      return mem.session;
+    },
+
+    async sendEmailOtp(email) {
+      await ensureLoaded();
+      const normalized = normalizeEmail(email);
+      if (!isValidEmail(normalized)) {
+        throw new DataError('BAD_EMAIL', 'Некоректний email');
+      }
+      mem.pendingEmail = normalized;
+      await persist();
+    },
+
+    async verifyEmailOtp(email, code) {
+      await ensureLoaded();
+      const normalized = normalizeEmail(email);
+      if (code !== MOCK_OTP) throw new DataError('BAD_OTP', 'Невірний код');
+      if (mem.pendingEmail && mem.pendingEmail !== normalized) {
+        throw new DataError('BAD_OTP', 'Спочатку надішліть код');
+      }
+      let profile = mem.profiles.find((p) => p.email === normalized);
+      if (!profile) {
+        profile = {
+          id: uid(),
+          phone: null,
+          email: normalized,
+          displayName: normalized.split('@')[0] || 'Користувач',
+          avatarUrl: null,
+          defaultMode: 'seek',
+          vertical: 'work',
+          radiusKm: 10,
+          lastGeog: null,
+          ratingAvg: 0,
+          ratingCount: 0,
+          oblast: 'Харківська',
+          localeOverride: null,
+          role: 'user',
+          plan: 'free',
+          accountKind: 'person',
+        };
+        mem.profiles.push(profile);
+      }
+      mem.session = { userId: profile.id, phone: profile.phone, email: profile.email };
+      mem.pendingEmail = null;
       mem.pendingPhone = null;
       await persist();
       notify();
