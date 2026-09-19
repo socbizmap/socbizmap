@@ -1,9 +1,10 @@
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CATEGORIES } from '@/src/categories';
+import { PilotMap } from '@/src/components/PilotMap';
 import { Chip, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
 import { DataError } from '@/src/data';
 import type { GeoPoint, PinCategory, PinKind, Vertical } from '@/src/data/types';
@@ -15,9 +16,7 @@ import {
   isValidUaPhone,
   KHARKIV,
   normalizeUaPhone,
-  projectToPilot,
   uaPhoneNationalDigits,
-  unprojectFromPilot,
 } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
@@ -44,7 +43,6 @@ export default function CreatePinScreen() {
   const [locationNote, setLocationNote] = useState<string | null>(null);
   const [locationSource, setLocationSource] = useState<'pending' | 'gps' | 'map' | 'kharkiv' | 'saved'>('pending');
   const [picking, setPicking] = useState(false);
-  const [plotSize, setPlotSize] = useState({ w: 1, h: 1 });
   const userPickedLocation = useRef(false);
   const didInitLocation = useRef(false);
 
@@ -141,15 +139,14 @@ export default function CreatePinScreen() {
     void locateMe(false);
   }, [editing, locateMe, profile?.lastGeog]);
 
-  function onPlotPress(locationX: number, locationY: number) {
-    const next = unprojectFromPilot(locationX / plotSize.w, locationY / plotSize.h);
-    if (!isValidGeoPoint(next)) return;
+  function applyMapPick(point: GeoPoint) {
+    if (!isValidGeoPoint(point) || !inPilotOblast(point.lat, point.lng)) return;
     userPickedLocation.current = true;
-    setGeog(next);
+    setPicking(true);
+    setGeog(point);
     setCity('');
     setLocationSource('map');
     setLocationNote(null);
-    setPicking(false);
   }
 
   async function save() {
@@ -221,7 +218,6 @@ export default function CreatePinScreen() {
     }
   }
 
-  const marker = geog ? projectToPilot(geog.lat, geog.lng) : null;
   const locationSummary =
     locationSource === 'pending' && !isValidGeoPoint(geog)
       ? ''
@@ -297,25 +293,14 @@ export default function CreatePinScreen() {
           </View>
           {locationNote ? <Muted style={styles.hint}>{locationNote}</Muted> : null}
           <Muted style={styles.hint}>{locationSummary}</Muted>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('pickOnMap')}
-            style={styles.plot}
-            onPress={(e) => {
-              onPlotPress(e.nativeEvent.locationX, e.nativeEvent.locationY);
-            }}
-            onLayout={(e) => {
-              setPlotSize({
-                w: e.nativeEvent.layout.width || 1,
-                h: e.nativeEvent.layout.height || 1,
-              });
-            }}
-          >
-            {marker ? (
-              <View style={[styles.dot, { left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }]} />
-            ) : null}
-            <Muted style={styles.plotHint}>{t('locationPlotHint')}</Muted>
-          </Pressable>
+          <View style={styles.plotWrap} collapsable={false}>
+            <PilotMap
+              compact
+              picking={picking || locationSource === 'map'}
+              pickMarker={geog}
+              onMapPress={applyMapPick}
+            />
+          </View>
         </View>
         <View style={styles.row}>
           <Chip
@@ -377,24 +362,10 @@ const styles = StyleSheet.create({
   payRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   uah: { fontSize: 20, fontWeight: '700', color: colors.primaryDark },
   err: { color: colors.danger, marginBottom: 12 },
-  plot: {
-    backgroundColor: colors.map,
+  plotWrap: {
+    height: 220,
+    marginBottom: 8,
     borderRadius: 16,
     overflow: 'hidden',
-    position: 'relative',
-    minHeight: 180,
-    marginBottom: 8,
-  },
-  plotHint: { position: 'absolute', left: 12, bottom: 12 },
-  dot: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    marginLeft: -7,
-    marginTop: -7,
-    borderRadius: 7,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: '#fff',
   },
 });
