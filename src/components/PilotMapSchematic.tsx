@@ -44,13 +44,10 @@ export function PilotMapSchematic({
   const markers = (
     <>
       {me ? (
-        <View pointerEvents="none" style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />
+        <View style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />
       ) : null}
       {picked ? (
-        <View
-          pointerEvents="none"
-          style={[styles.dot, styles.dotOn, { left: `${picked.x * 100}%`, top: `${picked.y * 100}%` }]}
-        />
+        <View style={[styles.dot, styles.dotOn, styles.inert, { left: `${picked.x * 100}%`, top: `${picked.y * 100}%` }]} />
       ) : null}
       {pins.map((p) => {
         const { x, y } = projectToPilot(p.geog.lat, p.geog.lng);
@@ -142,6 +139,7 @@ const styles = StyleSheet.create({
     height: 220,
   },
   plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
+  inert: { pointerEvents: 'none' },
   dot: {
     position: 'absolute',
     zIndex: 2,
@@ -174,5 +172,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     borderWidth: 2,
     borderColor: '#fff',
+    pointerEvents: 'none',
   },
 });
