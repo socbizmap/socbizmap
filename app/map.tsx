@@ -13,7 +13,7 @@ import {
 import { PinRow } from '@/src/components/PinRow';
 import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
-import { inPilotOblast, KHARKIV, projectToPilot } from '@/src/geo';
+import { inPilotOblast, KHARKIV, projectToPilot, unprojectFromPilot } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -191,11 +191,8 @@ export default function MapScreen() {
             const { locationX, locationY } = e.nativeEvent;
             const w = plotSize.w || 1;
             const h = plotSize.h || 1;
-            const x = locationX / w;
-            const y = locationY / h;
-            const lng = 34.85 + x * (38.1 - 34.85);
-            const lat = 50.46 - y * (50.46 - 48.52);
-            onPlotPress(lat, lng);
+            const next = unprojectFromPilot(locationX / w, locationY / h);
+            onPlotPress(next.lat, next.lng);
           }}
           onLayout={(e) => {
             plotSize.w = e.nativeEvent.layout.width;

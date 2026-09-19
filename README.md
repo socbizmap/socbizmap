@@ -30,7 +30,7 @@ SMS на live не піде, поки Twilio Trust Hub KYC не закритий
 
 Міграції: `supabase/migrations/` — вставити в SQL Editor проєкту `mutfwhenuegvdwhgwnty` у порядку імен файлів. Нова: `20260919120000_cabinet_chat.sql` (кабінет + чат).
 
-Кабінет і чат на live: [docs/SUPABASE.md](docs/SUPABASE.md) §8. Без env — mock: `+380501000001` (Продовжити / архів), `+380501000002` (чат по мітці).
+Кабінет і чат на live: [docs/SUPABASE.md](docs/SUPABASE.md) §9. Без env — mock: `+380501000001` (Продовжити / архів), `+380501000002` (чат по мітці).
 
 ## Екрани
 

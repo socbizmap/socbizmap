@@ -133,7 +133,21 @@ Object paths: `avatars/{user_id}/…`, `pin-media/{user_id}/…`. Object policie
 
 Statuses: `pending | revision | rejected | live | closed | hidden | archived | deleted`. Public map uses `live`. Beta UI does not write `boost_until`.
 
-## 7. Smoke without backend
+## 7. Geography writes (PostgREST / PostGIS)
+
+`pins.geog` and `profiles.last_geog` are `geography(Point, 4326)`. **Writes must be EWKT**, not GeoJSON:
+
+```
+SRID=4326;POINT(lng lat)
+```
+
+Longitude first, then latitude, with `SRID=4326`. Example: Kharkiv `SRID=4326;POINT(36.2304 49.9935)`.
+
+PostgREST will accept a GeoJSON object `{"type":"Point","coordinates":[lng,lat]}` as JSON, but PostGIS then parses that value as WKT and returns **`parse error - invalid geometry`**. The Expo client (`src/data/supabase.ts`) therefore sends EWKT from `toEwktPoint`.
+
+Reads: `pins.lat` / `pins.lng` are generated columns (`ST_Y` / `ST_X` of `geog`). Profile `last_geog` has no generated lat/lng — the client selects the geography column and parses GeoJSON or WKT via `parseGeography`.
+
+## 8. Smoke without backend
 
 ```bash
 npm install
@@ -145,7 +159,7 @@ No `.env` required. Create a pin after mock OTP; it stays `pending` and is absen
 
 Email mock: on login choose «Увійти через email», any valid address, **digit code** `123456`. Live Free uses the magic-link wait screen instead of that field.
 
-## 8. Smoke-test cabinet + chat
+## 9. Smoke-test cabinet + chat
 
 ### Mock (no `EXPO_PUBLIC_SUPABASE_*`)
 
