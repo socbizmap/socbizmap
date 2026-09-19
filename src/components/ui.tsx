@@ -1,4 +1,5 @@
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -8,10 +9,10 @@ import {
   type ViewProps,
 } from 'react-native';
 
-import { colors } from '@/src/theme';
+import { colors, WEB_COLUMN_MAX_WIDTH } from '@/src/theme';
 
 export function Screen({ style, ...rest }: ViewProps) {
-  return <View style={[styles.screen, style]} {...rest} />;
+  return <View style={[styles.screen, Platform.OS === 'web' ? styles.webScreen : null, style]} {...rest} />;
 }
 
 export function Title({ style, ...rest }: TextProps) {
@@ -78,6 +79,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
     padding: 20,
+  },
+  webScreen: {
+    width: '100%',
+    maxWidth: WEB_COLUMN_MAX_WIDTH,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 28,

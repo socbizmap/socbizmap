@@ -102,6 +102,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: WEB_COLUMN_MAX_WIDTH,
+    position: 'relative',
+    overflow: 'hidden',
     backgroundColor: colors.bg,
   },
 });

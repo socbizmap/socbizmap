@@ -215,7 +215,10 @@ export default function MapScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={p.title}
                 style={[styles.dot, { left: `${x * 100}%`, top: `${y * 100}%` }]}
-                onPress={() => router.push(`/pin/${p.id}`)}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  router.push(`/pin/${p.id}`);
+                }}
               />
             );
           })}
