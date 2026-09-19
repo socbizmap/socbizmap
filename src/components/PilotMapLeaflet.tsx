@@ -6,7 +6,7 @@ import { KHARKIV, PILOT_BBOX } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { colors } from '@/src/theme';
 
-import type { PilotMapProps } from './PilotMap';
+import type { PilotMapProps } from './pilotMapTypes';
 
 type LeafletNS = typeof import('leaflet');
 type LeafletMap = import('leaflet').Map;
@@ -82,7 +82,7 @@ function LeafletHost({
 }
 
 /** Web: Leaflet + OSM tiles. Dynamic import so Expo static render never touches `window`. */
-export function PilotMap({
+export function PilotMapLeaflet({
   origin,
   pins = [],
   pickMarker,

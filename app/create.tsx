@@ -142,6 +142,7 @@ export default function CreatePinScreen() {
   function applyMapPick(point: GeoPoint) {
     if (!isValidGeoPoint(point) || !inPilotOblast(point.lat, point.lng)) return;
     userPickedLocation.current = true;
+    setPicking(true);
     setGeog(point);
     setCity('');
     setLocationSource('map');
