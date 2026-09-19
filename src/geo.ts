@@ -121,6 +121,10 @@ export function formatGeoPoint(p: GeoPoint): string {
   return `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
 }
 
+export function isKharkivPoint(p: GeoPoint): boolean {
+  return Math.abs(p.lat - KHARKIV.lat) < 1e-4 && Math.abs(p.lng - KHARKIV.lng) < 1e-4;
+}
+
 export function projectToPilot(
   lat: number,
   lng: number,

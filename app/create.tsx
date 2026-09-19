@@ -10,6 +10,7 @@ import type { GeoPoint, PinCategory, PinKind, Vertical } from '@/src/data/types'
 import {
   formatGeoPoint,
   inPilotOblast,
+  isKharkivPoint,
   isValidGeoPoint,
   isValidUaPhone,
   KHARKIV,
@@ -74,8 +75,13 @@ export default function CreatePinScreen() {
       if (isValidGeoPoint(pin.geog)) {
         setGeog(pin.geog);
         setCity(pin.city);
-        setLocationSource('saved');
-        setLocationNote(null);
+        if (isKharkivPoint(pin.geog) || pin.city === 'Харків') {
+          setLocationSource('kharkiv');
+          setLocationNote(t('pinNearKharkiv'));
+        } else {
+          setLocationSource('saved');
+          setLocationNote(null);
+        }
       }
     });
   }, [api, params.id]);
@@ -118,9 +124,15 @@ export default function CreatePinScreen() {
     if (editing || userPickedLocation.current) return;
     if (profile?.lastGeog && isValidGeoPoint(profile.lastGeog)) {
       setGeog(profile.lastGeog);
-      setCity('');
-      setLocationSource('saved');
-      setLocationNote(null);
+      if (isKharkivPoint(profile.lastGeog)) {
+        setCity('Харків');
+        setLocationSource('kharkiv');
+        setLocationNote(t('pinNearKharkiv'));
+      } else {
+        setCity('');
+        setLocationSource('saved');
+        setLocationNote(null);
+      }
       didInitLocation.current = true;
       return;
     }
@@ -215,7 +227,7 @@ export default function CreatePinScreen() {
       ? ''
       : !isValidGeoPoint(geog)
         ? t('locationMissing')
-        : locationSource === 'kharkiv'
+        : locationSource === 'kharkiv' || isKharkivPoint(geog)
           ? `${t('pinNearKharkiv')} (${formatGeoPoint(geog)})`
           : locationSource === 'map'
             ? `${t('fromMap')} · ${formatGeoPoint(geog)}`
