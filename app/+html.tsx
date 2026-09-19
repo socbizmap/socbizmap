@@ -9,6 +9,11 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <ScrollViewStyleReset />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: 'html,body,#root{height:100%;background:#CCFBF1;}',
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>
