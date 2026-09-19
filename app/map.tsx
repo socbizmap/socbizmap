@@ -203,7 +203,6 @@ export default function MapScreen() {
             const me = projectToPilot(origin.lat, origin.lng);
             return (
               <View
-                pointerEvents="none"
                 style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]}
               />
             );
@@ -220,9 +219,7 @@ export default function MapScreen() {
               />
             );
           })}
-          <Muted pointerEvents="none" style={styles.plotHint}>
-            Харківська область · пілот
-          </Muted>
+          <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
           {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
         </Pressable>
       ) : (
@@ -290,7 +287,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     minHeight: 280,
   },
-  plotHint: { position: 'absolute', left: 12, bottom: 12 },
+  plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
   mapEmpty: {
     position: 'absolute',
     left: 0,
@@ -345,6 +342,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     borderWidth: 2,
     borderColor: '#fff',
+    pointerEvents: 'none',
   },
   list: { flex: 1 },
   footer: { marginTop: 12, gap: 8 },
