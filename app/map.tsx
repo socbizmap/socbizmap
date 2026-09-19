@@ -199,21 +199,30 @@ export default function MapScreen() {
             plotSize.h = e.nativeEvent.layout.height;
           }}
         >
+          {(() => {
+            const me = projectToPilot(origin.lat, origin.lng);
+            return (
+              <View
+                pointerEvents="none"
+                style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]}
+              />
+            );
+          })()}
           {pins.map((p) => {
             const { x, y } = projectToPilot(p.geog.lat, p.geog.lng);
             return (
               <Pressable
                 key={p.id}
+                accessibilityRole="button"
+                accessibilityLabel={p.title}
                 style={[styles.dot, { left: `${x * 100}%`, top: `${y * 100}%` }]}
                 onPress={() => router.push(`/pin/${p.id}`)}
               />
             );
           })}
-          {(() => {
-            const me = projectToPilot(origin.lat, origin.lng);
-            return <View style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />;
-          })()}
-          <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
+          <Muted pointerEvents="none" style={styles.plotHint}>
+            Харківська область · пілот
+          </Muted>
           {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
         </Pressable>
       ) : (
@@ -315,6 +324,7 @@ const styles = StyleSheet.create({
   alertNote: { textAlign: 'center' },
   dot: {
     position: 'absolute',
+    zIndex: 2,
     width: 14,
     height: 14,
     marginLeft: -7,
@@ -326,6 +336,7 @@ const styles = StyleSheet.create({
   },
   me: {
     position: 'absolute',
+    zIndex: 1,
     width: 12,
     height: 12,
     marginLeft: -6,
