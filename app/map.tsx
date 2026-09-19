@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { PinPreview } from '@/src/components/PinPreview';
 import { PinRow } from '@/src/components/PinRow';
 import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
@@ -34,12 +35,31 @@ export default function MapScreen() {
   const [alertsOn, setAlertsOn] = useState(false);
   const [alertNote, setAlertNote] = useState<string | null>(null);
   const [gpsTick, setGpsTick] = useState(0);
+  const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   const radiusKm = profile?.radiusKm ?? 10;
+
+  const selectedPin = useMemo(
+    () => pins.find((p) => p.id === selectedPinId) ?? null,
+    [pins, selectedPinId],
+  );
+
+  useEffect(() => {
+    setSelectedPinId(null);
+  }, [kind, vertical, search]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => setView((v) => (v === 'map' ? 'list' : 'map'))} style={styles.headerBtn}>
+        <Pressable
+          onPress={() =>
+            setView((v) => {
+              const next = v === 'map' ? 'list' : 'map';
+              if (next === 'list') setSelectedPinId(null);
+              return next;
+            })
+          }
+          style={styles.headerBtn}
+        >
           <Text style={styles.headerBtnText}>{view === 'map' ? '☰' : '⌖'}</Text>
         </Pressable>
       ),
@@ -162,7 +182,15 @@ export default function MapScreen() {
     <Screen style={styles.screen}>
       <View style={styles.filters}>
         {kindLabels.map((k) => (
-          <Chip key={k.id} label={k.label} selected={kind === k.id} onPress={() => setKind(k.id)} />
+          <Chip
+            key={k.id}
+            label={k.label}
+            selected={kind === k.id}
+            onPress={() => {
+              setKind(k.id);
+              setSelectedPinId(null);
+            }}
+          />
         ))}
       </View>
       <TextInput
@@ -170,7 +198,10 @@ export default function MapScreen() {
         placeholder="Пошук"
         placeholderTextColor={colors.muted}
         value={search}
-        onChangeText={setSearch}
+        onChangeText={(value) => {
+          setSearch(value);
+          setSelectedPinId(null);
+        }}
       />
       <View style={styles.chipRow}>
         <Pressable accessibilityRole="button" onPress={nearMe} style={styles.nearMe}>
@@ -193,6 +224,7 @@ export default function MapScreen() {
             const h = plotSize.h || 1;
             const next = unprojectFromPilot(locationX / w, locationY / h);
             onPlotPress(next.lat, next.lng);
+            setSelectedPinId(null);
           }}
           onLayout={(e) => {
             plotSize.w = e.nativeEvent.layout.width;
@@ -214,16 +246,29 @@ export default function MapScreen() {
                 key={p.id}
                 accessibilityRole="button"
                 accessibilityLabel={p.title}
-                style={[styles.dot, { left: `${x * 100}%`, top: `${y * 100}%` }]}
+                style={[
+                  styles.dot,
+                  selectedPinId === p.id ? styles.dotOn : null,
+                  { left: `${x * 100}%`, top: `${y * 100}%` },
+                ]}
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  router.push(`/pin/${p.id}`);
+                  setSelectedPinId(p.id);
                 }}
               />
             );
           })}
           <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
           {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
+          {selectedPin ? (
+            <View style={styles.previewWrap} pointerEvents="box-none">
+              <PinPreview
+                pin={selectedPin}
+                onDetails={() => router.push(`/pin/${selectedPin.id}`)}
+                onDismiss={() => setSelectedPinId(null)}
+              />
+            </View>
+          ) : null}
         </Pressable>
       ) : (
         <ScrollView style={styles.list}>
@@ -291,6 +336,13 @@ const styles = StyleSheet.create({
     minHeight: 280,
   },
   plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
+  previewWrap: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    zIndex: 5,
+  },
   mapEmpty: {
     position: 'absolute',
     left: 0,
@@ -333,6 +385,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderWidth: 2,
     borderColor: '#fff',
+  },
+  dotOn: {
+    zIndex: 4,
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    marginTop: -9,
+    borderRadius: 9,
+    backgroundColor: colors.primaryDark,
   },
   me: {
     position: 'absolute',

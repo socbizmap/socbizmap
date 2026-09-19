@@ -57,6 +57,7 @@ const uk = {
   locationMissing: 'Немає координат мітки — оберіть на карті',
   locationPlotHint: 'Харківська область · пілот',
   reply: 'Відгукнутись',
+  details: 'Детально',
   writeChat: 'Написати в чат',
   edit: 'Редагувати',
   continuePin: 'Продовжити',

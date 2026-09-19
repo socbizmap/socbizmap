@@ -6,6 +6,16 @@ import { formatKm, formatPay } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { colors } from '@/src/theme';
 
+/** Title-adjacent snippet used by list rows and the map preview card. */
+export function pinSnippet(pin: Pin): string {
+  const cat = CATEGORIES.find((c) => c.id === pin.category);
+  const pay = formatPay(pin.payAmount);
+  const parts = [cat ? t(cat.label) : pin.category];
+  if (pay) parts.push(pay);
+  if (pin.distanceM != null) parts.push(formatKm(pin.distanceM));
+  return parts.join(' · ');
+}
+
 export function PinRow({
   pin,
   onPress,
@@ -15,11 +25,9 @@ export function PinRow({
   onPress?: () => void;
   showStatus?: boolean;
 }) {
-  const cat = CATEGORIES.find((c) => c.id === pin.category);
-  const pay = formatPay(pin.payAmount);
   const thumb = pin.thumbnailPath || pin.media.find((m) => m.kind === 'photo')?.path;
-  return (
-    <Pressable onPress={onPress} style={styles.row}>
+  const inner = (
+    <>
       <View style={styles.thumb}>
         <Text style={styles.thumbText}>{thumb ? '📷' : t('noPhoto')}</Text>
       </View>
@@ -27,18 +35,22 @@ export function PinRow({
         <Text style={styles.title} numberOfLines={1}>
           {pin.title}
         </Text>
-        <Text style={styles.meta}>
-          {cat ? t(cat.label) : pin.category}
-          {pay ? ` · ${pay}` : ''}
-          {pin.distanceM != null ? ` · ${formatKm(pin.distanceM)}` : ''}
-        </Text>
+        <Text style={styles.meta}>{pinSnippet(pin)}</Text>
         {showStatus ? (
           <Text style={styles.status}>{t(STATUS_LABEL[pin.status])}</Text>
         ) : null}
         {pin.boostUntil ? <Text style={styles.boost}>✦</Text> : null}
       </View>
-    </Pressable>
+    </>
   );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={styles.row}>
+        {inner}
+      </Pressable>
+    );
+  }
+  return <View style={styles.row}>{inner}</View>;
 }
 
 const styles = StyleSheet.create({
