@@ -133,6 +133,7 @@ export function PilotMap({
       map.on('click', (e) => {
         onMapPressRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
       });
+      map.attributionControl.setPosition('topright');
       mapRef.current = map;
       requestAnimationFrame(() => {
         map?.invalidateSize();
