@@ -4,10 +4,11 @@ import { createMockApi } from './mock';
 import { createSupabaseApi } from './supabase';
 import type { DataApi } from './types';
 
-export type { DataApi, Pin, Profile, Session } from './types';
+export type { ChatMessage, ChatThread, DataApi, Pin, Profile, Session } from './types';
 export { DataError } from './types';
 export { MOCK_OTP } from './mock';
 export { isSupabaseConfigured } from '@/src/lib/supabase';
+export { pinNeedsContinue, daysUntilExpiry } from './renewal';
 
 let cached: DataApi | null = null;
 

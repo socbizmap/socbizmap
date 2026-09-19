@@ -76,6 +76,7 @@ export type Pin = {
   moderationNote: string | null;
   boostUntil: string | null;
   expiresAt: string | null;
+  autoRenew: boolean;
   createdAt: string;
   updatedAt: string;
   distanceM?: number;
@@ -103,11 +104,30 @@ export type CreatePinInput = {
   geog: GeoPoint;
   city: string;
   media?: { kind: MediaKind; path: string }[];
+  autoRenew?: boolean;
 };
 
 export type UpdatePinInput = Partial<
-  Omit<CreatePinInput, 'vertical'> & { status: PinStatus }
+  Omit<CreatePinInput, 'vertical'> & { status: PinStatus; autoRenew: boolean }
 >;
+
+export type ChatMessage = {
+  id: string;
+  pinId: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  createdAt: string;
+};
+
+export type ChatThread = {
+  pinId: string;
+  pinTitle: string;
+  peerId: string;
+  peerName: string;
+  lastBody: string | null;
+  lastAt: string | null;
+};
 
 export type Quota = {
   used: number;
@@ -141,8 +161,19 @@ export type DataApi = {
   listMyPins(): Promise<Pin[]>;
   createPin(input: CreatePinInput): Promise<Pin>;
   updatePin(id: string, input: UpdatePinInput): Promise<Pin>;
+  continuePin(id: string): Promise<Pin>;
+  archiveExpiredPins(): Promise<number>;
   getQuota(): Promise<Quota>;
   replyToPin(pinId: string): Promise<{ contactPhone: string }>;
+  openPinThread(pinId: string, peerId?: string): Promise<{ pinId: string; peerId: string }>;
+  listThreads(): Promise<ChatThread[]>;
+  listMessages(pinId: string, peerId: string): Promise<ChatMessage[]>;
+  sendMessage(pinId: string, peerId: string, body: string): Promise<ChatMessage>;
+  subscribeMessages(
+    pinId: string,
+    peerId: string,
+    cb: (messages: ChatMessage[]) => void,
+  ): () => void;
   rate(pinId: string, toId: string, stars: number): Promise<void>;
   registerDevice(token: string): Promise<void>;
   unregisterDevice(): Promise<void>;
