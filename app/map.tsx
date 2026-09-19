@@ -10,10 +10,12 @@ import {
   View,
 } from 'react-native';
 
+import { PinPreviewCard } from '@/src/components/PinPreviewCard';
+import { PilotMap } from '@/src/components/PilotMap';
 import { PinRow } from '@/src/components/PinRow';
 import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
-import { inPilotOblast, KHARKIV, projectToPilot, unprojectFromPilot } from '@/src/geo';
+import { inPilotOblast, KHARKIV } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -34,12 +36,20 @@ export default function MapScreen() {
   const [alertsOn, setAlertsOn] = useState(false);
   const [alertNote, setAlertNote] = useState<string | null>(null);
   const [gpsTick, setGpsTick] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const radiusKm = profile?.radiusKm ?? 10;
+  const selected = selectedId ? pins.find((p) => p.id === selectedId) ?? null : null;
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => setView((v) => (v === 'map' ? 'list' : 'map'))} style={styles.headerBtn}>
+        <Pressable
+          onPress={() => {
+            setSelectedId(null);
+            setView((v) => (v === 'map' ? 'list' : 'map'));
+          }}
+          style={styles.headerBtn}
+        >
           <Text style={styles.headerBtnText}>{view === 'map' ? '☰' : '⌖'}</Text>
         </Pressable>
       ),
@@ -162,7 +172,15 @@ export default function MapScreen() {
     <Screen style={styles.screen}>
       <View style={styles.filters}>
         {kindLabels.map((k) => (
-          <Chip key={k.id} label={k.label} selected={kind === k.id} onPress={() => setKind(k.id)} />
+          <Chip
+            key={k.id}
+            label={k.label}
+            selected={kind === k.id}
+            onPress={() => {
+              setSelectedId(null);
+              setKind(k.id);
+            }}
+          />
         ))}
       </View>
       <TextInput
@@ -170,7 +188,10 @@ export default function MapScreen() {
         placeholder="Пошук"
         placeholderTextColor={colors.muted}
         value={search}
-        onChangeText={setSearch}
+        onChangeText={(text) => {
+          setSelectedId(null);
+          setSearch(text);
+        }}
       />
       <View style={styles.chipRow}>
         <Pressable accessibilityRole="button" onPress={nearMe} style={styles.nearMe}>
@@ -185,46 +206,26 @@ export default function MapScreen() {
       </View>
       {gpsNote ? <Muted style={styles.gpsNote}>{gpsNote}</Muted> : null}
       {view === 'map' ? (
-        <Pressable
-          style={styles.plot}
-          onPress={(e) => {
-            const { locationX, locationY } = e.nativeEvent;
-            const w = plotSize.w || 1;
-            const h = plotSize.h || 1;
-            const next = unprojectFromPilot(locationX / w, locationY / h);
-            onPlotPress(next.lat, next.lng);
-          }}
-          onLayout={(e) => {
-            plotSize.w = e.nativeEvent.layout.width;
-            plotSize.h = e.nativeEvent.layout.height;
-          }}
-        >
-          {(() => {
-            const me = projectToPilot(origin.lat, origin.lng);
-            return (
-              <View
-                style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]}
-              />
-            );
-          })()}
-          {pins.map((p) => {
-            const { x, y } = projectToPilot(p.geog.lat, p.geog.lng);
-            return (
-              <Pressable
-                key={p.id}
-                accessibilityRole="button"
-                accessibilityLabel={p.title}
-                style={[styles.dot, { left: `${x * 100}%`, top: `${y * 100}%` }]}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  router.push(`/pin/${p.id}`);
-                }}
-              />
-            );
-          })}
-          <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
-          {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
-        </Pressable>
+        <View style={styles.mapWrap}>
+          <PilotMap
+            origin={origin}
+            pins={pins}
+            picking={picking}
+            selectedPinId={selectedId}
+            onSelectPin={(pin) => setSelectedId(pin.id)}
+            onMapPress={(point) => {
+              if (picking) {
+                onPlotPress(point.lat, point.lng);
+                return;
+              }
+              setSelectedId(null);
+            }}
+            emptyOverlay={pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
+          />
+          {selected ? (
+            <PinPreviewCard pin={selected} onDetails={() => router.push(`/pin/${selected.id}`)} />
+          ) : null}
+        </View>
       ) : (
         <ScrollView style={styles.list}>
           {pins.length === 0 ? emptyCta : pins.map((p) => (
@@ -254,8 +255,6 @@ export default function MapScreen() {
   );
 }
 
-const plotSize = { w: 0, h: 0 };
-
 const styles = StyleSheet.create({
   screen: { paddingBottom: 12 },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 4 },
@@ -282,27 +281,29 @@ const styles = StyleSheet.create({
   },
   nearMeText: { color: '#fff', fontWeight: '700' },
   gpsNote: { marginBottom: 8 },
-  plot: {
+  mapWrap: {
     flex: 1,
-    backgroundColor: colors.map,
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
     minHeight: 280,
+    position: 'relative',
   },
-  plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
   mapEmpty: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+    left: 12,
+    right: 12,
+    top: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(240, 253, 250, 0.82)',
-    padding: 16,
+    zIndex: 8,
   },
-  emptyBox: { alignItems: 'center', gap: 12, marginTop: 24, paddingHorizontal: 12 },
+  emptyBox: {
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   emptyText: {
     color: colors.text,
     fontSize: 16,
@@ -322,31 +323,6 @@ const styles = StyleSheet.create({
   bellGlyph: { fontSize: 28, marginBottom: 4 },
   bellLabel: { color: colors.primaryDark, fontWeight: '700' },
   alertNote: { textAlign: 'center' },
-  dot: {
-    position: 'absolute',
-    zIndex: 2,
-    width: 14,
-    height: 14,
-    marginLeft: -7,
-    marginTop: -7,
-    borderRadius: 7,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  me: {
-    position: 'absolute',
-    zIndex: 1,
-    width: 12,
-    height: 12,
-    marginLeft: -6,
-    marginTop: -6,
-    borderRadius: 6,
-    backgroundColor: '#2563EB',
-    borderWidth: 2,
-    borderColor: '#fff',
-    pointerEvents: 'none',
-  },
   list: { flex: 1 },
   footer: { marginTop: 12, gap: 8 },
   profileLink: { alignItems: 'center', padding: 8 },

@@ -56,6 +56,8 @@ const uk = {
   pinNearKharkiv: 'мітка біля Харкова',
   locationMissing: 'Немає координат мітки — оберіть на карті',
   locationPlotHint: 'Харківська область · пілот',
+  pinDetails: 'Детально',
+  osmAttribution: '© OpenStreetMap',
   reply: 'Відгукнутись',
   writeChat: 'Написати в чат',
   edit: 'Редагувати',
