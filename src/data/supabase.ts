@@ -2,6 +2,7 @@ import type { Session as SbSession, SupabaseClient } from '@supabase/supabase-js
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
+import { isValidGeoPoint, isValidUaPhone, normalizeUaPhone, parseGeography, toEwktPoint } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { isAuthCallbackUrl, parseAuthCallbackUrl } from '@/src/lib/auth-callback';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
@@ -65,6 +66,7 @@ type ProfileRow = {
   role: Profile['role'];
   plan: Profile['plan'];
   account_kind: Profile['accountKind'];
+  last_geog?: unknown;
 };
 
 type MediaRow = {
@@ -114,7 +116,7 @@ function mapProfile(row: ProfileRow): Profile {
     defaultMode: row.default_mode,
     vertical: row.vertical,
     radiusKm: row.radius_km,
-    lastGeog: null,
+    lastGeog: parseGeography(row.last_geog),
     ratingAvg: Number(row.rating_avg),
     ratingCount: row.rating_count,
     oblast: row.oblast,
@@ -323,10 +325,10 @@ export function createSupabaseApi(): DataApi {
       if (patch.vertical != null) body.vertical = patch.vertical;
       if (patch.defaultMode != null) body.default_mode = patch.defaultMode;
       if (patch.lastGeog != null) {
-        body.last_geog = {
-          type: 'Point',
-          coordinates: [patch.lastGeog.lng, patch.lastGeog.lat],
-        };
+        if (!isValidGeoPoint(patch.lastGeog)) {
+          throw new DataError('BAD_GEOG', t('locationMissing'));
+        }
+        body.last_geog = toEwktPoint(patch.lastGeog);
       }
       const { data, error } = await sb.from('profiles').update(body).eq('id', id).select('*').single();
       if (error) wrapError(error, 'Не вдалося оновити профіль');
@@ -386,6 +388,13 @@ export function createSupabaseApi(): DataApi {
       const { data: sessionData } = await sb.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const contactPhone = normalizeUaPhone(input.contactPhone);
+      if (!isValidUaPhone(contactPhone)) {
+        throw new DataError('BAD_PHONE', 'Телефон мітки: +380 і 9 цифр');
+      }
+      if (!isValidGeoPoint(input.geog)) {
+        throw new DataError('BAD_GEOG', t('locationMissing'));
+      }
       const { data, error } = await sb
         .from('pins')
         .insert({
@@ -398,8 +407,8 @@ export function createSupabaseApi(): DataApi {
           schedule: input.schedule,
           pay_amount: input.payAmount,
           pay_currency: 'UAH',
-          contact_phone: input.contactPhone,
-          geog: { type: 'Point', coordinates: [input.geog.lng, input.geog.lat] },
+          contact_phone: contactPhone,
+          geog: toEwktPoint(input.geog),
           city: input.city,
           status: 'pending',
           boost_until: null,
@@ -431,11 +440,20 @@ export function createSupabaseApi(): DataApi {
       if (input.category != null) body.category = input.category;
       if (input.schedule != null) body.schedule = input.schedule;
       if (input.payAmount !== undefined) body.pay_amount = input.payAmount;
-      if (input.contactPhone != null) body.contact_phone = input.contactPhone;
+      if (input.contactPhone != null) {
+        const contactPhone = normalizeUaPhone(input.contactPhone);
+        if (!isValidUaPhone(contactPhone)) {
+          throw new DataError('BAD_PHONE', 'Телефон мітки: +380 і 9 цифр');
+        }
+        body.contact_phone = contactPhone;
+      }
       if (input.city != null) body.city = input.city;
       if (input.kind != null) body.kind = input.kind;
       if (input.geog != null) {
-        body.geog = { type: 'Point', coordinates: [input.geog.lng, input.geog.lat] };
+        if (!isValidGeoPoint(input.geog)) {
+          throw new DataError('BAD_GEOG', t('locationMissing'));
+        }
+        body.geog = toEwktPoint(input.geog);
       }
       if (input.status != null) body.status = input.status;
       if (input.autoRenew != null) body.auto_renew = input.autoRenew;

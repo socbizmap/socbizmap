@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { haversineMeters, isValidUaPhone, kyivMonthKey } from '@/src/geo';
+import { haversineMeters, isValidGeoPoint, isValidUaPhone, kyivMonthKey, normalizeUaPhone } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { parseAuthCallbackUrl } from '@/src/lib/auth-callback';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
@@ -649,8 +649,12 @@ export function createMockApi(): DataApi {
     async createPin(input) {
       await ensureLoaded();
       const s = requireUser();
-      if (!isValidUaPhone(input.contactPhone)) {
+      const contactPhone = normalizeUaPhone(input.contactPhone);
+      if (!isValidUaPhone(contactPhone)) {
         throw new DataError('BAD_PHONE', 'Телефон мітки має бути +380XXXXXXXXX');
+      }
+      if (!isValidGeoPoint(input.geog)) {
+        throw new DataError('BAD_GEOG', t('locationMissing'));
       }
       const profile = profileById(s.userId);
       if (!profile) throw new DataError('NOT_FOUND', 'Профіль не знайдено');
@@ -669,7 +673,7 @@ export function createMockApi(): DataApi {
         schedule: input.schedule,
         payAmount: input.payAmount,
         payCurrency: 'UAH',
-        contactPhone: input.contactPhone,
+        contactPhone,
         geog: input.geog,
         city: input.city,
         status: 'pending',
@@ -703,8 +707,19 @@ export function createMockApi(): DataApi {
       if (input.category != null) pin.category = input.category;
       if (input.schedule != null) pin.schedule = input.schedule;
       if (input.payAmount !== undefined) pin.payAmount = input.payAmount;
-      if (input.contactPhone != null) pin.contactPhone = input.contactPhone;
-      if (input.geog != null) pin.geog = input.geog;
+      if (input.contactPhone != null) {
+        const contactPhone = normalizeUaPhone(input.contactPhone);
+        if (!isValidUaPhone(contactPhone)) {
+          throw new DataError('BAD_PHONE', 'Телефон мітки має бути +380XXXXXXXXX');
+        }
+        pin.contactPhone = contactPhone;
+      }
+      if (input.geog != null) {
+        if (!isValidGeoPoint(input.geog)) {
+          throw new DataError('BAD_GEOG', t('locationMissing'));
+        }
+        pin.geog = input.geog;
+      }
       if (input.city != null) pin.city = input.city;
       if (input.kind != null) pin.kind = input.kind;
       if (input.autoRenew != null) pin.autoRenew = input.autoRenew;

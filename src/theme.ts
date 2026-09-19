@@ -16,3 +16,6 @@ export const colors = {
   revision: '#C2410C',
   map: '#99F6E4',
 } as const;
+
+/** Centered phone column on web desktop so actions don’t span the monitor. */
+export const WEB_COLUMN_MAX_WIDTH = 460;

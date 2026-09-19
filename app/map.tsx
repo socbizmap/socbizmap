@@ -13,7 +13,7 @@ import {
 import { PinRow } from '@/src/components/PinRow';
 import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
-import { inPilotOblast, KHARKIV, projectToPilot } from '@/src/geo';
+import { inPilotOblast, KHARKIV, projectToPilot, unprojectFromPilot } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -191,31 +191,37 @@ export default function MapScreen() {
             const { locationX, locationY } = e.nativeEvent;
             const w = plotSize.w || 1;
             const h = plotSize.h || 1;
-            const x = locationX / w;
-            const y = locationY / h;
-            const lng = 34.85 + x * (38.1 - 34.85);
-            const lat = 50.46 - y * (50.46 - 48.52);
-            onPlotPress(lat, lng);
+            const next = unprojectFromPilot(locationX / w, locationY / h);
+            onPlotPress(next.lat, next.lng);
           }}
           onLayout={(e) => {
             plotSize.w = e.nativeEvent.layout.width;
             plotSize.h = e.nativeEvent.layout.height;
           }}
         >
+          {(() => {
+            const me = projectToPilot(origin.lat, origin.lng);
+            return (
+              <View
+                style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]}
+              />
+            );
+          })()}
           {pins.map((p) => {
             const { x, y } = projectToPilot(p.geog.lat, p.geog.lng);
             return (
               <Pressable
                 key={p.id}
+                accessibilityRole="button"
+                accessibilityLabel={p.title}
                 style={[styles.dot, { left: `${x * 100}%`, top: `${y * 100}%` }]}
-                onPress={() => router.push(`/pin/${p.id}`)}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  router.push(`/pin/${p.id}`);
+                }}
               />
             );
           })}
-          {(() => {
-            const me = projectToPilot(origin.lat, origin.lng);
-            return <View style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />;
-          })()}
           <Muted style={styles.plotHint}>Харківська область · пілот</Muted>
           {pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
         </Pressable>
@@ -284,7 +290,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     minHeight: 280,
   },
-  plotHint: { position: 'absolute', left: 12, bottom: 12 },
+  plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
   mapEmpty: {
     position: 'absolute',
     left: 0,
@@ -318,6 +324,7 @@ const styles = StyleSheet.create({
   alertNote: { textAlign: 'center' },
   dot: {
     position: 'absolute',
+    zIndex: 2,
     width: 14,
     height: 14,
     marginLeft: -7,
@@ -329,6 +336,7 @@ const styles = StyleSheet.create({
   },
   me: {
     position: 'absolute',
+    zIndex: 1,
     width: 12,
     height: 12,
     marginLeft: -6,
@@ -337,6 +345,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     borderWidth: 2,
     borderColor: '#fff',
+    pointerEvents: 'none',
   },
   list: { flex: 1 },
   footer: { marginTop: 12, gap: 8 },

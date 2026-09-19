@@ -1,12 +1,24 @@
+import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CATEGORIES } from '@/src/categories';
 import { Chip, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
 import { DataError } from '@/src/data';
-import type { PinCategory, PinKind, Vertical } from '@/src/data/types';
-import { isValidUaPhone, KHARKIV, normalizeUaPhone } from '@/src/geo';
+import type { GeoPoint, PinCategory, PinKind, Vertical } from '@/src/data/types';
+import {
+  formatGeoPoint,
+  inPilotOblast,
+  isKharkivPoint,
+  isValidGeoPoint,
+  isValidUaPhone,
+  KHARKIV,
+  normalizeUaPhone,
+  projectToPilot,
+  uaPhoneNationalDigits,
+  unprojectFromPilot,
+} from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
@@ -21,12 +33,20 @@ export default function CreatePinScreen() {
   const [description, setDescription] = useState('');
   const [schedule, setSchedule] = useState('');
   const [pay, setPay] = useState('');
-  const [phone, setPhone] = useState(profile?.phone?.replace('+380', '') ?? '');
+  const [phone, setPhone] = useState(() => uaPhoneNationalDigits(profile?.phone));
   const [category, setCategory] = useState<PinCategory>('other');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null);
   const [autoRenew, setAutoRenew] = useState(true);
+  const [geog, setGeog] = useState<GeoPoint | null>(null);
+  const [city, setCity] = useState('');
+  const [locationNote, setLocationNote] = useState<string | null>(null);
+  const [locationSource, setLocationSource] = useState<'pending' | 'gps' | 'map' | 'kharkiv' | 'saved'>('pending');
+  const [picking, setPicking] = useState(false);
+  const [plotSize, setPlotSize] = useState({ w: 1, h: 1 });
+  const userPickedLocation = useRef(false);
+  const didInitLocation = useRef(false);
 
   useEffect(() => {
     if (!session) {
@@ -49,11 +69,88 @@ export default function CreatePinScreen() {
       setDescription(pin.description);
       setSchedule(pin.schedule);
       setPay(pin.payAmount != null ? String(Math.round(pin.payAmount)) : '');
-      setPhone((pin.contactPhone ?? '').replace('+380', ''));
+      setPhone(uaPhoneNationalDigits(pin.contactPhone));
       setCategory(pin.category);
       setAutoRenew(pin.autoRenew !== false);
+      if (isValidGeoPoint(pin.geog)) {
+        setGeog(pin.geog);
+        setCity(pin.city);
+        if (isKharkivPoint(pin.geog) || pin.city === 'Харків') {
+          setLocationSource('kharkiv');
+          setLocationNote(t('pinNearKharkiv'));
+        } else {
+          setLocationSource('saved');
+          setLocationNote(null);
+        }
+      }
     });
   }, [api, params.id]);
+
+  const applyKharkivFallback = useCallback((note: string) => {
+    setGeog(KHARKIV);
+    setCity('Харків');
+    setLocationSource('kharkiv');
+    setLocationNote(note);
+  }, []);
+
+  const locateMe = useCallback(async (fromUser = false) => {
+    if (fromUser) userPickedLocation.current = true;
+    setPicking(false);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        if (!fromUser && userPickedLocation.current) return;
+        applyKharkivFallback(t('gpsDeniedPin'));
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (!fromUser && userPickedLocation.current) return;
+      if (!isValidGeoPoint(next) || !inPilotOblast(next.lat, next.lng)) {
+        applyKharkivFallback(t('gpsOutsidePilotPin'));
+        return;
+      }
+      setGeog(next);
+      setCity('');
+      setLocationSource('gps');
+      setLocationNote(null);
+    } catch {
+      if (!fromUser && userPickedLocation.current) return;
+      applyKharkivFallback(t('gpsDeniedPin'));
+    }
+  }, [applyKharkivFallback]);
+
+  useEffect(() => {
+    if (editing || userPickedLocation.current) return;
+    if (profile?.lastGeog && isValidGeoPoint(profile.lastGeog)) {
+      setGeog(profile.lastGeog);
+      if (isKharkivPoint(profile.lastGeog)) {
+        setCity('Харків');
+        setLocationSource('kharkiv');
+        setLocationNote(t('pinNearKharkiv'));
+      } else {
+        setCity('');
+        setLocationSource('saved');
+        setLocationNote(null);
+      }
+      didInitLocation.current = true;
+      return;
+    }
+    if (didInitLocation.current) return;
+    didInitLocation.current = true;
+    void locateMe(false);
+  }, [editing, locateMe, profile?.lastGeog]);
+
+  function onPlotPress(locationX: number, locationY: number) {
+    const next = unprojectFromPilot(locationX / plotSize.w, locationY / plotSize.h);
+    if (!isValidGeoPoint(next)) return;
+    userPickedLocation.current = true;
+    setGeog(next);
+    setCity('');
+    setLocationSource('map');
+    setLocationNote(null);
+    setPicking(false);
+  }
 
   async function save() {
     setError(null);
@@ -71,6 +168,10 @@ export default function CreatePinScreen() {
       setError('Оплата — лише цифри');
       return;
     }
+    if (!isValidGeoPoint(geog)) {
+      setError(t('locationMissing'));
+      return;
+    }
     setBusy(true);
     try {
       if (editing && params.id) {
@@ -82,8 +183,15 @@ export default function CreatePinScreen() {
           schedule: schedule.trim(),
           payAmount,
           contactPhone,
+          geog,
+          city,
           autoRenew,
         });
+        try {
+          await api.updateProfile({ lastGeog: geog });
+        } catch {
+          // pin already saved
+        }
         router.replace(`/pin/${params.id}`);
       } else {
         const created = await api.createPin({
@@ -95,10 +203,15 @@ export default function CreatePinScreen() {
           schedule: schedule.trim(),
           payAmount,
           contactPhone,
-          geog: profile?.lastGeog ?? KHARKIV,
-          city: profile?.lastGeog ? '' : 'Харків',
+          geog,
+          city,
           autoRenew,
         });
+        try {
+          await api.updateProfile({ lastGeog: geog });
+        } catch {
+          // pin already saved
+        }
         router.replace(`/pin/${created.id}`);
       }
     } catch (e) {
@@ -107,6 +220,20 @@ export default function CreatePinScreen() {
       setBusy(false);
     }
   }
+
+  const marker = geog ? projectToPilot(geog.lat, geog.lng) : null;
+  const locationSummary =
+    locationSource === 'pending' && !isValidGeoPoint(geog)
+      ? ''
+      : !isValidGeoPoint(geog)
+        ? t('locationMissing')
+        : locationSource === 'kharkiv' || isKharkivPoint(geog)
+          ? `${t('pinNearKharkiv')} (${formatGeoPoint(geog)})`
+          : locationSource === 'map'
+            ? `${t('fromMap')} · ${formatGeoPoint(geog)}`
+            : locationSource === 'gps'
+              ? `${t('fromHere')} · ${formatGeoPoint(geog)}`
+              : formatGeoPoint(geog);
 
   return (
     <Screen>
@@ -161,6 +288,34 @@ export default function CreatePinScreen() {
               onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 9))}
             />
           </View>
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>{t('location')}</Text>
+          <View style={styles.row}>
+            <Chip label={t('pickOnMap')} selected={picking || locationSource === 'map'} onPress={() => setPicking(true)} />
+            <Chip label={t('nearMe')} selected={locationSource === 'gps'} onPress={() => void locateMe(true)} />
+          </View>
+          {locationNote ? <Muted style={styles.hint}>{locationNote}</Muted> : null}
+          <Muted style={styles.hint}>{locationSummary}</Muted>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('pickOnMap')}
+            style={styles.plot}
+            onPress={(e) => {
+              onPlotPress(e.nativeEvent.locationX, e.nativeEvent.locationY);
+            }}
+            onLayout={(e) => {
+              setPlotSize({
+                w: e.nativeEvent.layout.width || 1,
+                h: e.nativeEvent.layout.height || 1,
+              });
+            }}
+          >
+            {marker ? (
+              <View style={[styles.dot, { left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }]} />
+            ) : null}
+            <Muted style={styles.plotHint}>{t('locationPlotHint')}</Muted>
+          </Pressable>
         </View>
         <View style={styles.row}>
           <Chip
@@ -222,4 +377,24 @@ const styles = StyleSheet.create({
   payRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   uah: { fontSize: 20, fontWeight: '700', color: colors.primaryDark },
   err: { color: colors.danger, marginBottom: 12 },
+  plot: {
+    backgroundColor: colors.map,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    minHeight: 180,
+    marginBottom: 8,
+  },
+  plotHint: { position: 'absolute', left: 12, bottom: 12 },
+  dot: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    marginLeft: -7,
+    marginTop: -7,
+    borderRadius: 7,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
 });
