@@ -16,7 +16,7 @@ const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTR = `<a href="https://www.openstreetmap.org/copyright">${t('osmAttribution')}</a>`;
 
 const SKIN_CSS = `
-.leaflet-container{width:100%;height:100%;background:#dbeafe;font:12px/1.3 system-ui,sans-serif;z-index:0;}
+.leaflet-container{width:100%;height:100%;background:#dbeafe;font:12px/1.3 system-ui,sans-serif;z-index:0;touch-action:none;}
 .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.85);}
 .sbm-pin,.sbm-me{background:transparent!important;border:none!important;display:flex!important;align-items:center;justify-content:center;}
 .sbm-me{pointer-events:none!important;}
@@ -66,37 +66,48 @@ function meIcon(L: LeafletNS) {
   });
 }
 
-function LeafletHost({ hostRef }: { hostRef: MutableRefObject<HTMLDivElement | null> }) {
+function LeafletHost({
+  hostRef,
+  minHeight,
+}: {
+  hostRef: MutableRefObject<HTMLDivElement | null>;
+  minHeight: number;
+}) {
   return createElement('div', {
     ref: (node: HTMLDivElement | null) => {
       hostRef.current = node;
     },
-    style: { width: '100%', height: '100%', minHeight: 280 },
+    style: { width: '100%', height: '100%', minHeight },
   });
 }
 
 /** Web: Leaflet + OSM tiles. Dynamic import so Expo static render never touches `window`. */
 export function PilotMap({
   origin,
-  pins,
-  picking,
-  selectedPinId,
+  pins = [],
+  pickMarker,
+  picking = false,
+  selectedPinId = null,
   onSelectPin,
   onMapPress,
   emptyOverlay,
+  compact = false,
 }: PilotMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const LRef = useRef<LeafletNS | null>(null);
   const meRef = useRef<LeafletMarker | null>(null);
+  const pickRef = useRef<LeafletMarker | null>(null);
   const pinRefs = useRef<Map<string, LeafletMarker>>(new Map());
   const onMapPressRef = useRef(onMapPress);
   const onSelectPinRef = useRef(onSelectPin);
-  const originRef = useRef(origin);
+  const startRef = useRef(pickMarker ?? origin ?? KHARKIV);
+  const compactRef = useRef(compact);
   const [mapReady, setMapReady] = useState(false);
   onMapPressRef.current = onMapPress;
   onSelectPinRef.current = onSelectPin;
-  originRef.current = origin;
+  startRef.current = pickMarker ?? origin ?? KHARKIV;
+  compactRef.current = compact;
 
   useEffect(() => {
     let cancelled = false;
@@ -115,21 +126,23 @@ export function PilotMap({
         [PILOT_BBOX.minLat, PILOT_BBOX.minLng],
         [PILOT_BBOX.maxLat, PILOT_BBOX.maxLng],
       );
-      const start = originRef.current ?? KHARKIV;
+      const start = startRef.current;
       map = L.map(host, {
         center: [start.lat, start.lng],
-        zoom: 12,
+        zoom: compactRef.current ? 13 : 12,
         minZoom: 8,
         maxZoom: 18,
         maxBounds: bounds.pad(0.06),
         maxBoundsViscosity: 0.85,
         zoomControl: true,
         attributionControl: true,
+        scrollWheelZoom: !compactRef.current,
       });
       L.tileLayer(OSM_TILES, {
         attribution: OSM_ATTR,
         maxZoom: 19,
       }).addTo(map);
+      L.DomEvent.disableScrollPropagation(host);
       map.on('click', (e) => {
         onMapPressRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
       });
@@ -149,6 +162,8 @@ export function PilotMap({
       pinRefs.current.clear();
       meRef.current?.remove();
       meRef.current = null;
+      pickRef.current?.remove();
+      pickRef.current = null;
       map?.remove();
       mapRef.current = null;
       LRef.current = null;
@@ -160,6 +175,11 @@ export function PilotMap({
     const L = LRef.current;
     if (!mapReady || !map || !L) return;
     map.invalidateSize();
+    if (!origin) {
+      meRef.current?.remove();
+      meRef.current = null;
+      return;
+    }
     map.panTo([origin.lat, origin.lng]);
     if (meRef.current) {
       meRef.current.setLatLng([origin.lat, origin.lng]);
@@ -171,7 +191,28 @@ export function PilotMap({
       keyboard: false,
       zIndexOffset: -500,
     }).addTo(map);
-  }, [mapReady, origin.lat, origin.lng]);
+  }, [mapReady, origin]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!mapReady || !map || !L) return;
+    if (!pickMarker) {
+      pickRef.current?.remove();
+      pickRef.current = null;
+      return;
+    }
+    if (pickRef.current) {
+      pickRef.current.setLatLng([pickMarker.lat, pickMarker.lng]);
+      return;
+    }
+    pickRef.current = L.marker([pickMarker.lat, pickMarker.lng], {
+      icon: pinIcon(L, true),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 600,
+    }).addTo(map);
+  }, [mapReady, pickMarker]);
 
   useEffect(() => {
     const el = mapRef.current?.getContainer();
@@ -208,7 +249,7 @@ export function PilotMap({
       });
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        onSelectPinRef.current(pin);
+        onSelectPinRef.current?.(pin);
       });
       marker.addTo(map);
       pinRefs.current.set(pin.id, marker);
@@ -217,12 +258,12 @@ export function PilotMap({
 
   return (
     <View
-      style={styles.plot}
+      style={[styles.plot, compact ? styles.plotCompact : null]}
       onLayout={() => {
         mapRef.current?.invalidateSize();
       }}
     >
-      <LeafletHost hostRef={hostRef} />
+      <LeafletHost hostRef={hostRef} minHeight={compact ? 220 : 280} />
       <Muted style={styles.plotHint}>{picking ? t('pickOnMap') : t('locationPlotHint')}</Muted>
       {emptyOverlay}
     </View>
@@ -238,10 +279,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     minHeight: 280,
   },
+  plotCompact: {
+    flex: 0,
+    minHeight: 220,
+    height: 220,
+  },
   plotHint: {
     position: 'absolute',
     left: 12,
-    bottom: 28,
+    bottom: 10,
     pointerEvents: 'none',
     zIndex: 4,
     backgroundColor: 'rgba(240, 253, 250, 0.88)',

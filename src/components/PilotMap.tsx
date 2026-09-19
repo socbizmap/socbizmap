@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Muted } from '@/src/components/ui';
@@ -8,48 +8,65 @@ import { t } from '@/src/i18n';
 import { colors } from '@/src/theme';
 
 export type PilotMapProps = {
-  origin: GeoPoint;
-  pins: Pin[];
-  picking: boolean;
-  selectedPinId: string | null;
-  onSelectPin: (pin: Pin) => void;
+  origin?: GeoPoint | null;
+  pins?: Pin[];
+  pickMarker?: GeoPoint | null;
+  picking?: boolean;
+  selectedPinId?: string | null;
+  onSelectPin?: (pin: Pin) => void;
   onMapPress: (point: GeoPoint) => void;
   emptyOverlay?: ReactNode;
+  compact?: boolean;
 };
-
-const plotSize = { w: 0, h: 0 };
 
 /** Native schematic plot. Web uses `PilotMap.web.tsx` (Leaflet + OSM). */
 export function PilotMap({
   origin,
-  pins,
-  picking,
-  selectedPinId,
+  pins = [],
+  pickMarker,
+  picking = false,
+  selectedPinId = null,
   onSelectPin,
   onMapPress,
   emptyOverlay,
+  compact = false,
 }: PilotMapProps) {
-  const me = projectToPilot(origin.lat, origin.lng);
+  const plotSize = useRef({ w: 1, h: 1 });
+  const me = origin ? projectToPilot(origin.lat, origin.lng) : null;
+  const picked = pickMarker ? projectToPilot(pickMarker.lat, pickMarker.lng) : null;
+
+  function pressAt(locationX: number, locationY: number) {
+    const w = plotSize.current.w || 1;
+    const h = plotSize.current.h || 1;
+    if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) return;
+    onMapPress(unprojectFromPilot(locationX / w, locationY / h));
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={t('pickOnMap')}
       accessibilityState={{ selected: picking }}
-      style={styles.plot}
+      style={[styles.plot, compact ? styles.plotCompact : null]}
       onPress={(e) => {
-        const { locationX, locationY } = e.nativeEvent;
-        const w = plotSize.w || 1;
-        const h = plotSize.h || 1;
-        onMapPress(unprojectFromPilot(locationX / w, locationY / h));
+        pressAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
       }}
       onLayout={(e) => {
-        plotSize.w = e.nativeEvent.layout.width;
-        plotSize.h = e.nativeEvent.layout.height;
+        plotSize.current = {
+          w: e.nativeEvent.layout.width || 1,
+          h: e.nativeEvent.layout.height || 1,
+        };
       }}
     >
-      <View
-        pointerEvents="none"
-        style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]}
-      />
+      {me ? (
+        <View pointerEvents="none" style={[styles.me, { left: `${me.x * 100}%`, top: `${me.y * 100}%` }]} />
+      ) : null}
+      {picked ? (
+        <View
+          pointerEvents="none"
+          style={[styles.dot, styles.dotOn, { left: `${picked.x * 100}%`, top: `${picked.y * 100}%` }]}
+        />
+      ) : null}
       {pins.map((p) => {
         const { x, y } = projectToPilot(p.geog.lat, p.geog.lng);
         const selected = p.id === selectedPinId;
@@ -61,7 +78,7 @@ export function PilotMap({
             style={[styles.dot, selected ? styles.dotOn : null, { left: `${x * 100}%`, top: `${y * 100}%` }]}
             onPress={(e) => {
               e.stopPropagation?.();
-              onSelectPin(p);
+              onSelectPin?.(p);
             }}
           />
         );
@@ -80,6 +97,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     minHeight: 280,
+  },
+  plotCompact: {
+    flex: 0,
+    minHeight: 220,
+    height: 220,
   },
   plotHint: { position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none' },
   dot: {
