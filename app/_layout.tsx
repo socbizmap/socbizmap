@@ -50,6 +50,7 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     width: '100%',
+    minHeight: '100%',
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
   },
