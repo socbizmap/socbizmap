@@ -36,14 +36,18 @@ export default function PinCardScreen() {
   const photo = pin.media.find((m) => m.kind === 'photo');
   const pinId = pin.id;
 
-  async function reply() {
+  async function openChat() {
     if (!session) {
       router.push('/login');
       return;
     }
+    if (own) {
+      router.push('/chats');
+      return;
+    }
     try {
-      const { contactPhone } = await api.replyToPin(pinId);
-      router.push(`/reply-sent?phone=${encodeURIComponent(contactPhone)}`);
+      const { peerId } = await api.openPinThread(pinId);
+      router.push(`/chat/${pinId}?peer=${encodeURIComponent(peerId)}`);
     } catch (e) {
       setError(e instanceof DataError ? e.message : 'Помилка');
     }
@@ -64,6 +68,7 @@ export default function PinCardScreen() {
         <Text style={styles.body}>{pin.description}</Text>
         {pin.schedule ? <Muted>{pin.schedule}</Muted> : null}
         <Muted style={styles.city}>{pin.city}</Muted>
+        <Muted style={styles.chatHint}>{t('chatInApp')}</Muted>
         {session && pin.contactPhone ? (
           <Text style={styles.phone}>{pin.contactPhone}</Text>
         ) : (
@@ -77,12 +82,13 @@ export default function PinCardScreen() {
                 label={`✎ ${t('edit')}`}
                 onPress={() => router.push(`/create?id=${pin.id}`)}
               />
+              <GhostButton label={t('myChats')} onPress={() => router.push('/chats')} />
               {pin.status === 'live' ? (
                 <Chip label={`${t('highlight')} · ${t('soon')}`} />
               ) : null}
             </>
           ) : (
-            <PrimaryButton label={t('reply')} onPress={() => void reply()} />
+            <PrimaryButton label={t('writeChat')} onPress={() => void openChat()} />
           )}
         </View>
         {error ? <Text style={styles.err}>{error}</Text> : null}
@@ -104,6 +110,7 @@ const styles = StyleSheet.create({
   meta: { marginVertical: 8 },
   body: { fontSize: 16, color: colors.text, marginVertical: 12, lineHeight: 22 },
   city: { marginBottom: 8 },
+  chatHint: { marginBottom: 8 },
   phone: { fontSize: 18, fontWeight: '700', color: colors.primaryDark, marginVertical: 8 },
   actions: { marginTop: 20, gap: 12 },
   err: { color: colors.danger, marginTop: 12 },

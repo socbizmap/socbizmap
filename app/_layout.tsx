@@ -31,6 +31,8 @@ export default function RootLayout() {
         <Stack.Screen name="pin/[id]" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="create" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="profile" options={{ title: 'SocBizMap' }} />
+        <Stack.Screen name="chats" options={{ title: 'SocBizMap' }} />
+        <Stack.Screen name="chat/[pinId]" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="reply-sent" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="rate" options={{ title: 'SocBizMap' }} />
         <Stack.Screen name="admin" options={{ title: 'SocBizMap' }} />

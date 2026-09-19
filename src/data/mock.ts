@@ -5,8 +5,11 @@ import { t } from '@/src/i18n';
 import { parseAuthCallbackUrl } from '@/src/lib/auth-callback';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 
+import { extendExpiresAt, isPinExpired, pinNeedsContinue } from './renewal';
 import {
   DataError,
+  type ChatMessage,
+  type ChatThread,
   type DataApi,
   type Pin,
   type PinMedia,
@@ -14,7 +17,7 @@ import {
   type Session,
 } from './types';
 
-const STORAGE_KEY = 'socbizmap.mock.v11';
+const STORAGE_KEY = 'socbizmap.mock.v12';
 export const MOCK_OTP = '123456';
 
 type MockState = {
@@ -26,6 +29,7 @@ type MockState = {
   replies: { pinId: string; authorId: string }[];
   ratings: { fromId: string; toId: string; pinId: string; stars: number }[];
   devices: { userId: string; token: string }[];
+  messages: ChatMessage[];
 };
 
 const empty: MockState = {
@@ -37,10 +41,12 @@ const empty: MockState = {
   replies: [],
   ratings: [],
   devices: [],
+  messages: [],
 };
 
 let mem: MockState = seed(structuredClone(empty));
 const listeners = new Set<(s: Session | null) => void>();
+const messageListeners = new Set<() => void>();
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
 
@@ -50,6 +56,14 @@ function uid(): string {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function daysFromNow(days: number): string {
+  return new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
+}
+
+function notifyMessages(): void {
+  for (const cb of messageListeners) cb();
 }
 
 function seed(state: MockState): MockState {
@@ -148,7 +162,8 @@ function seed(state: MockState): MockState {
       status: 'live',
       moderationNote: null,
       boostUntil: null,
-      expiresAt: null,
+      expiresAt: daysFromNow(2),
+      autoRenew: true,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: media('pin-kh-offer-work', ''),
@@ -170,7 +185,8 @@ function seed(state: MockState): MockState {
       status: 'live',
       moderationNote: null,
       boostUntil: null,
-      expiresAt: null,
+      expiresAt: daysFromNow(20),
+      autoRenew: true,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: [],
@@ -192,7 +208,8 @@ function seed(state: MockState): MockState {
       status: 'live',
       moderationNote: null,
       boostUntil: null,
-      expiresAt: null,
+      expiresAt: daysFromNow(-1),
+      autoRenew: false,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: media('pin-zm-offer-service', ''),
@@ -214,7 +231,8 @@ function seed(state: MockState): MockState {
       status: 'live',
       moderationNote: null,
       boostUntil: null,
-      expiresAt: null,
+      expiresAt: daysFromNow(10),
+      autoRenew: true,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: media('pin-kh-offer-service', ''),
@@ -236,7 +254,8 @@ function seed(state: MockState): MockState {
       status: 'live',
       moderationNote: null,
       boostUntil: null,
-      expiresAt: null,
+      expiresAt: daysFromNow(15),
+      autoRenew: false,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: [],
@@ -259,6 +278,30 @@ function seed(state: MockState): MockState {
       moderationNote: null,
       boostUntil: null,
       expiresAt: null,
+      autoRenew: true,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      media: [],
+    },
+    {
+      id: 'pin-kh-archived-work',
+      authorId: employer.id,
+      kind: 'offer',
+      vertical: 'work',
+      title: 'Водій (архів)',
+      category: 'workers',
+      description: 'Строк минув — в архіві.',
+      schedule: 'Зміни',
+      payAmount: 18000,
+      payCurrency: 'UAH',
+      contactPhone: '+380501000001',
+      geog: { lat: 49.99, lng: 36.22 },
+      city: 'Харків',
+      status: 'archived',
+      moderationNote: null,
+      boostUntil: null,
+      expiresAt: daysFromNow(-5),
+      autoRenew: true,
       createdAt: nowIso(),
       updatedAt: nowIso(),
       media: [],
@@ -267,6 +310,25 @@ function seed(state: MockState): MockState {
 
   state.profiles = [employer, seeker, master, admin];
   state.pins = pins;
+  state.replies = [{ pinId: 'pin-kh-offer-work', authorId: seeker.id }];
+  state.messages = [
+    {
+      id: 'msg-seed-1',
+      pinId: 'pin-kh-offer-work',
+      senderId: seeker.id,
+      recipientId: employer.id,
+      body: 'Доброго дня, ще актуальна вакансія муляра?',
+      createdAt: daysFromNow(-1),
+    },
+    {
+      id: 'msg-seed-2',
+      pinId: 'pin-kh-offer-work',
+      senderId: employer.id,
+      recipientId: seeker.id,
+      body: 'Так, виходьте завтра на 8:00, район центр.',
+      createdAt: daysFromNow(-0.5),
+    },
+  ];
   return state;
 }
 
@@ -281,6 +343,12 @@ async function ensureLoaded(): Promise<void> {
           if (parsed?.pins?.length) {
             mem = parsed;
             mem.pendingEmail = mem.pendingEmail ?? null;
+            mem.messages = mem.messages ?? [];
+            mem.replies = mem.replies ?? [];
+            mem.pins = (mem.pins ?? []).map((p) => ({
+              ...p,
+              autoRenew: p.autoRenew !== false,
+            }));
             mem.profiles = (mem.profiles ?? []).map((p) => ({
               ...p,
               email: p.email ?? null,
@@ -335,6 +403,48 @@ function usedThisMonth(authorId: string): number {
 
 function oppositeKind(kind: Pin['kind']): Pin['kind'] {
   return kind === 'seek' ? 'offer' : 'seek';
+}
+
+function archiveExpired(): number {
+  let n = 0;
+  for (const p of mem.pins) {
+    if (isPinExpired(p)) {
+      p.status = 'archived';
+      p.updatedAt = nowIso();
+      n += 1;
+    }
+  }
+  return n;
+}
+
+function sameThread(m: ChatMessage, pinId: string, a: string, b: string): boolean {
+  if (m.pinId !== pinId) return false;
+  return (
+    (m.senderId === a && m.recipientId === b) || (m.senderId === b && m.recipientId === a)
+  );
+}
+
+function requireLivePin(pinId: string): Pin {
+  const pin = mem.pins.find((p) => p.id === pinId);
+  if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
+  return pin;
+}
+
+function ensureReply(pinId: string, authorId: string): void {
+  if (!mem.replies.some((r) => r.pinId === pinId && r.authorId === authorId)) {
+    mem.replies.push({ pinId, authorId });
+  }
+}
+
+function inPinThread(pin: Pin, me: string, other: string): boolean {
+  if (me === other) return false;
+  if (pin.authorId === me) {
+    return mem.replies.some((r) => r.pinId === pin.id && r.authorId === other);
+  }
+  if (pin.authorId === other) {
+    return mem.replies.some((r) => r.pinId === pin.id && r.authorId === me);
+  }
+  return false;
 }
 
 export function createMockApi(): DataApi {
@@ -490,6 +600,7 @@ export function createMockApi(): DataApi {
 
     async listLivePins(filters) {
       await ensureLoaded();
+      archiveExpired();
       const radiusM = filters.radiusKm * 1000;
       const wanted = oppositeKind(filters.kind);
       return mem.pins
@@ -511,6 +622,7 @@ export function createMockApi(): DataApi {
 
     async getPin(id) {
       await ensureLoaded();
+      archiveExpired();
       const pin = mem.pins.find((p) => p.id === id);
       if (!pin) return null;
       const s = mem.session;
@@ -527,6 +639,7 @@ export function createMockApi(): DataApi {
     async listMyPins() {
       await ensureLoaded();
       const s = requireUser();
+      if (archiveExpired()) await persist();
       return mem.pins
         .filter((p) => p.authorId === s.userId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -563,6 +676,7 @@ export function createMockApi(): DataApi {
         moderationNote: null,
         boostUntil: null,
         expiresAt: null,
+        autoRenew: input.autoRenew !== false,
         createdAt: nowIso(),
         updatedAt: nowIso(),
         media: (input.media ?? []).map((m, i) => ({
@@ -593,6 +707,7 @@ export function createMockApi(): DataApi {
       if (input.geog != null) pin.geog = input.geog;
       if (input.city != null) pin.city = input.city;
       if (input.kind != null) pin.kind = input.kind;
+      if (input.autoRenew != null) pin.autoRenew = input.autoRenew;
       if (input.status === 'closed' || input.status === 'hidden' || input.status === 'archived' || input.status === 'deleted') {
         pin.status = input.status;
       } else if (input.status === 'pending') {
@@ -626,17 +741,149 @@ export function createMockApi(): DataApi {
       return { used: usedThisMonth(s.userId), limit: quotaFor(plan), plan };
     },
 
+    async continuePin(id) {
+      await ensureLoaded();
+      const s = requireUser();
+      const pin = mem.pins.find((p) => p.id === id);
+      if (!pin || pin.authorId !== s.userId) throw new DataError('FORBIDDEN', 'Лише своя мітка');
+      if (!pinNeedsContinue(pin)) {
+        throw new DataError('PIN_CONTINUE_FORBIDDEN', t('continueForbidden'));
+      }
+      pin.expiresAt = extendExpiresAt(pin.expiresAt);
+      pin.updatedAt = nowIso();
+      await persist();
+      return { ...pin, media: [...pin.media] };
+    },
+
+    async archiveExpiredPins() {
+      await ensureLoaded();
+      requireUser();
+      const n = archiveExpired();
+      if (n) await persist();
+      return n;
+    },
+
     async replyToPin(pinId) {
       await ensureLoaded();
       const s = requireUser();
       const pin = mem.pins.find((p) => p.id === pinId && p.status === 'live');
       if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
       if (pin.authorId === s.userId) throw new DataError('FORBIDDEN', 'Це ваша мітка');
-      if (!mem.replies.some((r) => r.pinId === pinId && r.authorId === s.userId)) {
-        mem.replies.push({ pinId, authorId: s.userId });
-        await persist();
-      }
+      ensureReply(pinId, s.userId);
+      await persist();
       return { contactPhone: pin.contactPhone ?? '' };
+    },
+
+    async openPinThread(pinId, peerId) {
+      await ensureLoaded();
+      const s = requireUser();
+      const pin = requireLivePin(pinId);
+      if (peerId) {
+        if (!inPinThread(pin, s.userId, peerId)) {
+          throw new DataError('FORBIDDEN', t('chatForbidden'));
+        }
+        return { pinId, peerId };
+      }
+      if (pin.authorId === s.userId) {
+        throw new DataError('FORBIDDEN', t('pickThread'));
+      }
+      if (pin.status !== 'live' && pin.status !== 'archived') {
+        throw new DataError('NOT_FOUND', 'Мітку не знайдено');
+      }
+      ensureReply(pinId, s.userId);
+      await persist();
+      return { pinId, peerId: pin.authorId };
+    },
+
+    async listThreads() {
+      await ensureLoaded();
+      const s = requireUser();
+      const pairs = new Map<string, { pinId: string; peerId: string }>();
+      for (const r of mem.replies) {
+        const pin = mem.pins.find((p) => p.id === r.pinId);
+        if (!pin) continue;
+        if (r.authorId === s.userId) {
+          pairs.set(`${r.pinId}:${pin.authorId}`, { pinId: r.pinId, peerId: pin.authorId });
+        } else if (pin.authorId === s.userId) {
+          pairs.set(`${r.pinId}:${r.authorId}`, { pinId: r.pinId, peerId: r.authorId });
+        }
+      }
+      const threads: ChatThread[] = [];
+      for (const { pinId, peerId } of pairs.values()) {
+        const pin = mem.pins.find((p) => p.id === pinId);
+        const peer = profileById(peerId);
+        const last = mem.messages
+          .filter((m) => sameThread(m, pinId, s.userId, peerId))
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        threads.push({
+          pinId,
+          pinTitle: pin?.title ?? pinId,
+          peerId,
+          peerName: peer?.displayName ?? t('chatPeer'),
+          lastBody: last?.body ?? null,
+          lastAt: last?.createdAt ?? null,
+        });
+      }
+      return threads.sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+    },
+
+    async listMessages(pinId, peerId) {
+      await ensureLoaded();
+      const s = requireUser();
+      const pin = requireLivePin(pinId);
+      if (!inPinThread(pin, s.userId, peerId)) {
+        throw new DataError('FORBIDDEN', t('chatForbidden'));
+      }
+      return mem.messages
+        .filter((m) => sameThread(m, pinId, s.userId, peerId))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map((m) => ({ ...m }));
+    },
+
+    async sendMessage(pinId, peerId, body) {
+      await ensureLoaded();
+      const s = requireUser();
+      const text = body.trim();
+      if (!text) throw new DataError('BAD_BODY', t('chatEmptyBody'));
+      if (text.length > 2000) throw new DataError('BAD_BODY', t('chatEmptyBody'));
+      const pin = requireLivePin(pinId);
+      if (pin.authorId !== s.userId && pin.authorId === peerId) {
+        ensureReply(pinId, s.userId);
+      }
+      if (!inPinThread(pin, s.userId, peerId)) {
+        throw new DataError('FORBIDDEN', t('chatForbidden'));
+      }
+      const msg: ChatMessage = {
+        id: uid(),
+        pinId,
+        senderId: s.userId,
+        recipientId: peerId,
+        body: text,
+        createdAt: nowIso(),
+      };
+      mem.messages.push(msg);
+      await persist();
+      notifyMessages();
+      return { ...msg };
+    },
+
+    subscribeMessages(pinId, peerId, cb) {
+      let cancelled = false;
+      const pull = () => {
+        if (cancelled) return;
+        void this.listMessages(pinId, peerId).then((rows) => {
+          if (!cancelled) cb(rows);
+        });
+      };
+      pull();
+      const poll = setInterval(pull, 4000);
+      const onChange = () => pull();
+      messageListeners.add(onChange);
+      return () => {
+        cancelled = true;
+        clearInterval(poll);
+        messageListeners.delete(onChange);
+      };
     },
 
     async rate(pinId, toId, stars) {
@@ -692,7 +939,8 @@ export function createMockApi(): DataApi {
       pin.moderationNote = note ?? null;
       pin.updatedAt = nowIso();
       if (status === 'live') {
-        pin.expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+        pin.expiresAt = daysFromNow(30);
+        pin.autoRenew = pin.autoRenew !== false;
       }
       await persist();
     },

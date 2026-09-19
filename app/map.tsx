@@ -233,8 +233,11 @@ export default function MapScreen() {
               label={t('createPin')}
               onPress={() => router.push(`/create?vertical=${vertical}&kind=${kind}`)}
             />
+            <Pressable onPress={() => router.push('/chats')} style={styles.profileLink}>
+              <Text style={styles.profileText}>{t('myChats')}</Text>
+            </Pressable>
             <Pressable onPress={() => router.push('/profile')} style={styles.profileLink}>
-              <Text style={styles.profileText}>{t('profile')}</Text>
+              <Text style={styles.profileText}>{t('cabinet')}</Text>
             </Pressable>
           </>
         ) : (

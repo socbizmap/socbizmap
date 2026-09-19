@@ -8,16 +8,17 @@ Expo env (public only — never commit the anon key):
 - `EXPO_PUBLIC_AUTH_EMAIL` — set to `1` to show email magic-link on login immediately (also auto-shown if SMS send fails)
 - `EXPO_PUBLIC_AUTH_EMAIL_OTP` — set to `1` **only** when email templates include `{{ .Token }}` (custom SMTP or Pro). Leave unset on **Free** (ConfirmationURL / magic-link only).
 
-If either URL or anon key is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v11`). Mock OTP code: `123456` (phone **and** email digit field). Admin mock phone: `+380500000000`.
+If either URL or anon key is missing or empty, the app uses the **mock** data layer (AsyncStorage key `socbizmap.mock.v12`). Mock OTP code: `123456` (phone **and** email digit field). Admin mock phone: `+380500000000`. Cabinet demo: `+380501000001` (Continue + archive). Chat demo: `+380501000002` → pin «Муляр на обʼєкт у Харкові».
 
 ## 1. Apply migrations
 
 SQL files live in `supabase/migrations/` and are ordered by filename:
 
-1. `supabase/migrations/20260917120000_init.sql` — PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), storage buckets `avatars` + `pin-media`.
+1. `supabase/migrations/20260917120000_init.sql` — PostGIS, tables (`profiles`, `pins`, `pin_media`, `pin_replies`, `ratings`, `devices`), RLS, RPCs (`list_live_pins_nearby`, quota helpers), storage buckets `avatars` + `pin-media`. Chat bodies are **not** here — see `20260919120000_cabinet_chat.sql`.
 2. `supabase/migrations/20260917220000_smoke_fixes.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-17). Re-run is safe (`create or replace` / `drop policy if exists`).
 3. `supabase/migrations/20260918200000_normalize_auth_phone.sql` — **already applied live** on `mutfwhenuegvdwhgwnty` (2026-09-18). Replaces `handle_new_user` (`create or replace`).
 4. `supabase/migrations/20260918210000_email_auth_profile.sql` — **apply on live** (email column on `profiles`, unique email, `handle_new_user` for email-only users). Re-run is safe.
+5. `supabase/migrations/20260919120000_cabinet_chat.sql` — **apply on live** (`pins.auto_renew`, `continue_pin`, `archive_expired_pins`, `messages` + RLS, Realtime publication). Re-run is safe.
 
 ### SQL editor (fastest)
 
@@ -123,7 +124,11 @@ Object paths: `avatars/{user_id}/…`, `pin-media/{user_id}/…`. Object policie
 - New pin `INSERT` → `pending`, `boost_until` forced null. Calendar-month quota in `Europe/Kyiv`: 3 (`free`) / 30 (`pro`). Pencil `UPDATE` and `revision` → `pending` do **not** consume quota.
 - Substantial author edits of `live`/`revision` flip status back to `pending`.
 - `pin_media.kind` is `photo` (max 5) or `video` (max 1).
-- `pin_replies` has no chat body; the app shows `pins.contact_phone` after a reply.
+- `pin_replies` is thread membership (who wrote about a pin). Chat bodies live in **`messages`**.
+- `messages`: only sender/recipient (or admin) can `SELECT`/`INSERT`. Anon has no grants. No `contact_phone` on this table.
+- Auto-renew **on**: 3 days before `expires_at` cabinet shows **Продовжити** (+30d). If not continued → `archived` at expiry.
+- Auto-renew **off**: silent `archived` at expiry (no Continue).
+- Live map RPC hides `expires_at < now()` even before archive.
 - Storage paths: `avatars/{user_id}/…`, `pin-media/{user_id}/…`.
 
 Statuses: `pending | revision | rejected | live | closed | hidden | archived | deleted`. Public map uses `live`. Beta UI does not write `boost_until`.
@@ -139,3 +144,30 @@ npx expo start
 No `.env` required. Create a pin after mock OTP; it stays `pending` and is absent from the public map until an admin (`+380500000000`) sets `live`.
 
 Email mock: on login choose «Увійти через email», any valid address, **digit code** `123456`. Live Free uses the magic-link wait screen instead of that field.
+
+## 8. Smoke-test cabinet + chat
+
+### Mock (no `EXPO_PUBLIC_SUPABASE_*`)
+
+```bash
+npm install
+npm run typecheck
+npx expo start
+```
+
+1. Login `+380501000001` / `123456` → **Кабінет**: live pin «Муляр…» shows **Скоро закінчиться** + **Продовжити**; «Водій (архів)» is under **Архів**. **Продовжити** adds +30 days.
+2. Toggle **Автопродовження вимкнено** — Continue disappears; copy says silent archive.
+3. **Повідомлення**: thread with Олена about the mason pin. Open chat, send a reply.
+4. Sign out. Login `+380501000002` / `123456` → map list → same pin → **Написати в чат** → thread with ТОВ Приклад. Phone is visible only after login (not to guests).
+
+### Live (`EXPO_PUBLIC_SUPABASE_URL` + `ANON_KEY`)
+
+1. SQL Editor → paste `20260919120000_cabinet_chat.sql` (after older files). Dashboard → **Database → Publications → supabase_realtime** should list `messages` (the migration adds it).
+2. Two accounts (email magic-link). User A creates a pin; admin sets `live` (or SQL: `update pins set status = 'live' where id = '…'` — trigger sets `expires_at` +30d if null).
+3. User B opens the pin → **Написати в чат** → send a line. User A **Кабінет → Повідомлення** sees the thread. Anon/guest map still has no `contact_phone` (`pins_public` / RPC).
+4. Cabinet Continue: `update pins set expires_at = now() + interval '2 days', auto_renew = true, status = 'live' where id = '…' and author_id = '<A>';` Reload cabinet as A → **Продовжити** → `expires_at` is +30d from the old value.
+5. Silent archive: `update pins set auto_renew = false, expires_at = now() - interval '1 hour' where id = '…';` Reload cabinet → status **Архів**, pin gone from the public map.
+
+Realtime on Free is best-effort (`postgres_changes` on `messages`). The client **also polls every 4s**, so chat works if Realtime is off or the channel drops.
+
+Do not commit `.env` or the anon key.

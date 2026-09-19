@@ -26,6 +26,7 @@ export default function CreatePinScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null);
+  const [autoRenew, setAutoRenew] = useState(true);
 
   useEffect(() => {
     if (!session) {
@@ -50,6 +51,7 @@ export default function CreatePinScreen() {
       setPay(pin.payAmount != null ? String(Math.round(pin.payAmount)) : '');
       setPhone((pin.contactPhone ?? '').replace('+380', ''));
       setCategory(pin.category);
+      setAutoRenew(pin.autoRenew !== false);
     });
   }, [api, params.id]);
 
@@ -80,6 +82,7 @@ export default function CreatePinScreen() {
           schedule: schedule.trim(),
           payAmount,
           contactPhone,
+          autoRenew,
         });
         router.replace(`/pin/${params.id}`);
       } else {
@@ -94,6 +97,7 @@ export default function CreatePinScreen() {
           contactPhone,
           geog: profile?.lastGeog ?? KHARKIV,
           city: profile?.lastGeog ? '' : 'Харків',
+          autoRenew,
         });
         router.replace(`/pin/${created.id}`);
       }
@@ -158,6 +162,14 @@ export default function CreatePinScreen() {
             />
           </View>
         </View>
+        <View style={styles.row}>
+          <Chip
+            label={autoRenew ? t('autoRenewOn') : t('autoRenewOff')}
+            selected={autoRenew}
+            onPress={() => setAutoRenew((v) => !v)}
+          />
+        </View>
+        <Muted style={styles.hint}>{autoRenew ? t('renewNotice') : t('silentArchive')}</Muted>
         {error ? <Text style={styles.err}>{error}</Text> : null}
         <PrimaryButton label={t('save')} disabled={busy} onPress={() => void save()} />
       </ScrollView>
@@ -192,6 +204,7 @@ function Field({
 
 const styles = StyleSheet.create({
   quota: { marginVertical: 12 },
+  hint: { marginBottom: 12 },
   row: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
   field: { marginBottom: 12 },
   label: { fontWeight: '600', color: colors.text, marginBottom: 6 },

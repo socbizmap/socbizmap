@@ -7,8 +7,11 @@ import { isAuthCallbackUrl, parseAuthCallbackUrl } from '@/src/lib/auth-callback
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { getSupabase } from '@/src/lib/supabase';
 
+import { isPinExpired } from './renewal';
 import {
   DataError,
+  type ChatMessage,
+  type ChatThread,
   type DataApi,
   type Pin,
   type PinCategory,
@@ -37,6 +40,7 @@ type PinRow = {
   moderation_note?: string | null;
   boost_until: string | null;
   expires_at: string | null;
+  auto_renew?: boolean;
   created_at: string;
   updated_at: string;
   lat: number;
@@ -69,6 +73,20 @@ type MediaRow = {
   kind: PinMedia['kind'];
   path: string;
   sort: number;
+};
+
+type MessageRow = {
+  id: string;
+  pin_id: string;
+  sender_id: string;
+  recipient_id: string;
+  body: string;
+  created_at: string;
+};
+
+type ReplyRow = {
+  pin_id: string;
+  author_id: string;
 };
 
 function requireClient(): SupabaseClient {
@@ -126,6 +144,7 @@ function mapPin(row: PinRow, media: PinMedia[] = []): Pin {
     moderationNote: row.moderation_note ?? null,
     boostUntil: row.boost_until,
     expiresAt: row.expires_at,
+    autoRenew: row.auto_renew !== false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     distanceM: row.distance_m == null ? undefined : Number(row.distance_m),
@@ -144,10 +163,32 @@ function mapMedia(row: MediaRow): PinMedia {
   };
 }
 
+function mapMessage(row: MessageRow): ChatMessage {
+  return {
+    id: row.id,
+    pinId: row.pin_id,
+    senderId: row.sender_id,
+    recipientId: row.recipient_id,
+    body: row.body,
+    createdAt: row.created_at,
+  };
+}
+
+function sameThread(row: MessageRow, pinId: string, a: string, b: string): boolean {
+  if (row.pin_id !== pinId) return false;
+  return (
+    (row.sender_id === a && row.recipient_id === b) ||
+    (row.sender_id === b && row.recipient_id === a)
+  );
+}
+
 function wrapError(err: { message?: string; code?: string } | null, fallback: string): never {
   const message = err?.message ?? fallback;
   if (message.includes('PIN_QUOTA_EXCEEDED')) {
     throw new DataError('PIN_QUOTA_EXCEEDED', t('quotaExceeded'));
+  }
+  if (message.includes('PIN_CONTINUE_FORBIDDEN')) {
+    throw new DataError('PIN_CONTINUE_FORBIDDEN', t('continueForbidden'));
   }
   throw new DataError(err?.code ?? 'SUPABASE', message);
 }
@@ -313,6 +354,11 @@ export function createSupabaseApi(): DataApi {
       const { data, error } = await sb.from(table).select('*').eq('id', id).maybeSingle();
       if (error) wrapError(error, 'Мітку не знайдено');
       if (!data) return null;
+      const pin = mapPin(data as PinRow);
+      const viewer = sessionData.session?.user.id;
+      if (isPinExpired(pin) && pin.authorId !== viewer) {
+        return null;
+      }
       const media = await loadMedia(sb, id);
       return mapPin(data as PinRow, media);
     },
@@ -321,6 +367,7 @@ export function createSupabaseApi(): DataApi {
       const { data: sessionData } = await sb.auth.getSession();
       const id = sessionData.session?.user.id;
       if (!id) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      await sb.rpc('archive_expired_pins');
       const { data, error } = await sb
         .from('pins')
         .select('*')
@@ -356,6 +403,7 @@ export function createSupabaseApi(): DataApi {
           city: input.city,
           status: 'pending',
           boost_until: null,
+          auto_renew: input.autoRenew !== false,
         })
         .select('*')
         .single();
@@ -390,9 +438,28 @@ export function createSupabaseApi(): DataApi {
         body.geog = { type: 'Point', coordinates: [input.geog.lng, input.geog.lat] };
       }
       if (input.status != null) body.status = input.status;
+      if (input.autoRenew != null) body.auto_renew = input.autoRenew;
       const { data, error } = await sb.from('pins').update(body).eq('id', id).select('*').single();
       if (error) wrapError(error, 'Не вдалося оновити мітку');
       return mapPin(data as PinRow, await loadMedia(sb, id));
+    },
+
+    async continuePin(id) {
+      const { data: sessionData } = await sb.auth.getSession();
+      if (!sessionData.session?.user.id) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const { data, error } = await sb.rpc('continue_pin', { p_pin_id: id });
+      if (error) wrapError(error, t('continueForbidden'));
+      const row = (Array.isArray(data) ? data[0] : data) as PinRow | null;
+      if (!row) throw new DataError('PIN_CONTINUE_FORBIDDEN', t('continueForbidden'));
+      return mapPin(row, await loadMedia(sb, id));
+    },
+
+    async archiveExpiredPins() {
+      const { data: sessionData } = await sb.auth.getSession();
+      if (!sessionData.session?.user.id) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const { data, error } = await sb.rpc('archive_expired_pins');
+      if (error) wrapError(error, 'Не вдалося архівувати');
+      return Number(data ?? 0);
     },
 
     async getQuota() {
@@ -426,6 +493,179 @@ export function createSupabaseApi(): DataApi {
       const phone = (data as { contact_phone?: string } | null)?.contact_phone;
       if (!phone) throw new DataError('NO_PHONE', t('needLogin'));
       return { contactPhone: phone };
+    },
+
+    async openPinThread(pinId, peerId) {
+      const { data: sessionData } = await sb.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const pin = await this.getPin(pinId);
+      if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
+      if (peerId) {
+        if (peerId === userId) throw new DataError('FORBIDDEN', t('chatForbidden'));
+        const isAuthor = pin.authorId === userId;
+        const { data: reply, error } = await sb
+          .from('pin_replies')
+          .select('pin_id, author_id')
+          .eq('pin_id', pinId)
+          .eq('author_id', isAuthor ? peerId : userId)
+          .maybeSingle();
+        if (error) wrapError(error, t('chatForbidden'));
+        if (!reply) throw new DataError('FORBIDDEN', t('chatForbidden'));
+        if (!isAuthor && pin.authorId !== peerId) {
+          throw new DataError('FORBIDDEN', t('chatForbidden'));
+        }
+        return { pinId, peerId };
+      }
+      if (pin.authorId === userId) {
+        throw new DataError('FORBIDDEN', t('pickThread'));
+      }
+      const { error } = await sb.from('pin_replies').upsert(
+        { pin_id: pinId, author_id: userId },
+        { onConflict: 'pin_id,author_id' },
+      );
+      if (error) wrapError(error, t('chatForbidden'));
+      return { pinId, peerId: pin.authorId };
+    },
+
+    async listThreads() {
+      const { data: sessionData } = await sb.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+
+      const { data: replyRows, error: replyErr } = await sb
+        .from('pin_replies')
+        .select('pin_id, author_id');
+      if (replyErr) wrapError(replyErr, 'Не вдалося завантажити чати');
+      const replies = (replyRows as ReplyRow[] | null) ?? [];
+      const pinIds = [...new Set(replies.map((r) => r.pin_id))];
+      if (pinIds.length === 0) return [];
+
+      const [{ data: pinRows, error: pinErr }, { data: msgRows, error: msgErr }] = await Promise.all([
+        sb.from('pins').select('id, title, author_id').in('id', pinIds),
+        sb
+          .from('messages')
+          .select('id, pin_id, sender_id, recipient_id, body, created_at')
+          .in('pin_id', pinIds)
+          .order('created_at', { ascending: false })
+          .limit(400),
+      ]);
+      if (pinErr) wrapError(pinErr, 'Не вдалося завантажити чати');
+      if (msgErr) wrapError(msgErr, 'Не вдалося завантажити чати');
+
+      const pins = new Map(
+        ((pinRows as { id: string; title: string; author_id: string }[] | null) ?? []).map((p) => [
+          p.id,
+          p,
+        ]),
+      );
+      const messages = (msgRows as MessageRow[] | null) ?? [];
+      const pairs = new Map<string, { pinId: string; peerId: string }>();
+      for (const r of replies) {
+        const pin = pins.get(r.pin_id);
+        if (!pin) continue;
+        if (r.author_id === userId) {
+          pairs.set(`${r.pin_id}:${pin.author_id}`, { pinId: r.pin_id, peerId: pin.author_id });
+        } else if (pin.author_id === userId) {
+          pairs.set(`${r.pin_id}:${r.author_id}`, { pinId: r.pin_id, peerId: r.author_id });
+        }
+      }
+
+      const peerIds = [...new Set([...pairs.values()].map((p) => p.peerId))];
+      const { data: profileRows } = peerIds.length
+        ? await sb.from('profiles').select('id, display_name').in('id', peerIds)
+        : { data: [] as { id: string; display_name: string }[] };
+      const names = new Map(
+        ((profileRows as { id: string; display_name: string }[] | null) ?? []).map((p) => [
+          p.id,
+          p.display_name,
+        ]),
+      );
+
+      const threads: ChatThread[] = [];
+      for (const { pinId, peerId } of pairs.values()) {
+        const pin = pins.get(pinId);
+        const last = messages.find((m) => sameThread(m, pinId, userId, peerId));
+        threads.push({
+          pinId,
+          pinTitle: pin?.title ?? pinId,
+          peerId,
+          peerName: names.get(peerId) ?? t('chatPeer'),
+          lastBody: last?.body ?? null,
+          lastAt: last?.created_at ?? null,
+        });
+      }
+      return threads.sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+    },
+
+    async listMessages(pinId, peerId) {
+      const { data: sessionData } = await sb.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const { data, error } = await sb
+        .from('messages')
+        .select('id, pin_id, sender_id, recipient_id, body, created_at')
+        .eq('pin_id', pinId)
+        .or(
+          `and(sender_id.eq.${userId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${userId})`,
+        )
+        .order('created_at', { ascending: true });
+      if (error) wrapError(error, 'Не вдалося завантажити повідомлення');
+      return ((data as MessageRow[] | null) ?? []).map(mapMessage);
+    },
+
+    async sendMessage(pinId, peerId, body) {
+      const { data: sessionData } = await sb.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
+      const text = body.trim();
+      if (!text) throw new DataError('BAD_BODY', t('chatEmptyBody'));
+      const pin = await this.getPin(pinId);
+      if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
+      if (pin.authorId !== userId && pin.authorId === peerId) {
+        const { error: replyErr } = await sb.from('pin_replies').upsert(
+          { pin_id: pinId, author_id: userId },
+          { onConflict: 'pin_id,author_id' },
+        );
+        if (replyErr) wrapError(replyErr, t('chatForbidden'));
+      }
+      const { data, error } = await sb
+        .from('messages')
+        .insert({
+          pin_id: pinId,
+          sender_id: userId,
+          recipient_id: peerId,
+          body: text,
+        })
+        .select('id, pin_id, sender_id, recipient_id, body, created_at')
+        .single();
+      if (error) wrapError(error, t('chatForbidden'));
+      return mapMessage(data as MessageRow);
+    },
+
+    subscribeMessages(pinId, peerId, cb) {
+      let cancelled = false;
+      const pull = () => {
+        if (cancelled) return;
+        void this.listMessages(pinId, peerId).then((rows) => {
+          if (!cancelled) cb(rows);
+        });
+      };
+      pull();
+      const poll = setInterval(pull, 4000);
+      const channel = sb
+        .channel(`chat:${pinId}:${[pinId, peerId].sort().join(':')}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `pin_id=eq.${pinId}` },
+          () => pull(),
+        )
+        .subscribe();
+      return () => {
+        cancelled = true;
+        clearInterval(poll);
+        void sb.removeChannel(channel);
+      };
     },
 
     async rate(pinId, toId, stars) {
