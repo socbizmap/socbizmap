@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npx expo export -p web",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/pin/:id", "destination": "/pin/[id].html" },
+    { "source": "/chat/:pinId", "destination": "/chat/[pinId].html" }
+  ]
+}
