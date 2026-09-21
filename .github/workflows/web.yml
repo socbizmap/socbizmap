@@ -1,0 +1,54 @@
+# Web-only. Does not run EAS / native builds.
+name: Web export
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  export:
+    name: Typecheck + expo export -p web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Static web export
+        run: npm run export:web
+        env:
+          # Live client values — GitHub Actions secrets (never service_role).
+          # Missing anon key → mock data layer; export must still succeed.
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_AUTH_EMAIL: ${{ secrets.EXPO_PUBLIC_AUTH_EMAIL || '1' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+      - name: Cloudflare Pages (optional)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Skipping Cloudflare Pages (set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable)."
+            exit 0
+          fi
+          npm install --no-save wrangler@4
+          npx wrangler pages deploy dist --project-name=socbizmap --branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"

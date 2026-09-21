@@ -32,6 +32,18 @@ SMS на live не піде, поки Twilio Trust Hub KYC не закритий
 
 Кабінет і чат на live: [docs/SUPABASE.md](docs/SUPABASE.md) §9. Без env — mock: `+380501000001` (Продовжити / архів), `+380501000002` (чат по мітці).
 
+## Web beta (HTTPS, не localhost)
+
+Статичний Expo-експорт: `npx expo export -p web` → каталог `dist/`. Мобільний `expo start` / iOS / Android не змінюється.
+
+Потрібні **build**-змінні (лише public client; ніколи `service_role`):
+
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `EXPO_PUBLIC_AUTH_EMAIL=1`
+
+Один клік: [Import на Vercel](https://vercel.com/new/import?s=https://github.com/socbizmap/socbizmap) — пуш у `main` деплоїть production, PR дає preview URL. Альтернатива: Cloudflare Pages. Покроково + Auth Site URL / redirect allowlist (`https://<deploy-host>/**` і `/auth/callback`): [docs/WEB.md](docs/WEB.md).
+
 ## Екрани
 
 Сплеш, вхід, старт (Робота / Послуги; Барахолка — «Скоро»), мапа зі списком (іконка зверху справа), картка мітки, створення/олівець, **кабінет** (активні / спливають / архів, Продовжити), **чат** по мітці, повідомлення, відгук надіслано, оцінка, черга admin.

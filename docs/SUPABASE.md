@@ -56,10 +56,14 @@ Email is **enabled by default** in Supabase Auth. It does **not** use Twilio.
 
 1. Dashboard → **Authentication** → **Providers** → **Email** — leave enabled.
 2. Do **not** expect to paste `{{ .Token }}` on Free. The app waits after «Надіслати посилання» and completes sign-in when the user opens **ConfirmationURL** (web redirect or `socbizmap://` / Expo deep link). Copy: *«Надіслали посилання на пошту — відкрий лист і натисни увійти»*.
-3. **Authentication** → **URL Configuration** — add redirect allowlist entries:
-   - `http://localhost:8081/auth/callback`
-   - `socbizmap://auth/callback`
-   - your Expo web origin + `/auth/callback`
+3. **Authentication** → **URL Configuration** — Site URL + redirect allowlist must include the **public web beta host** (not only localhost):
+   - **Site URL**: `https://<deploy-host>` (Vercel or Cloudflare Pages production origin — see [WEB.md](WEB.md))
+   - Redirects:
+     - `https://<deploy-host>/auth/callback`
+     - `https://<deploy-host>/**`
+     - previews: `https://*.vercel.app/**` and/or `https://*.pages.dev/**`
+     - `http://localhost:8081/auth/callback`
+     - `socbizmap://auth/callback`
 4. Client: `signInWithOtp({ email, options: { emailRedirectTo } })`. The click hits `/auth/callback` with PKCE `code` or `access_token` in the URL. `consumeAuthUrl` + `detectSessionInUrl` (web) create the session. **No** `verifyOtp` for this path.
 5. Digit OTP (`verifyOtp` + field «Код з листа») is **only** for:
    - **mock** (no env) — code `123456`

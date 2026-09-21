@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/pin/**", "destination": "/pin/[id].html" },
+    { "source": "/chat/**", "destination": "/chat/[pinId].html" }
+  ]
+}
