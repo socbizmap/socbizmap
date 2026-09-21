@@ -7,7 +7,10 @@ export default function Root({ children }: PropsWithChildren) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
+        />
         <link
           rel="stylesheet"
           href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -18,7 +21,7 @@ export default function Root({ children }: PropsWithChildren) {
         <style
           dangerouslySetInnerHTML={{
             __html:
-              'html,body,#root{height:100%;width:100%;margin:0;background:#CCFBF1;}#root{display:flex;flex-direction:column;}',
+              'html,body,#root{height:100%;height:100dvh;max-height:100dvh;width:100%;margin:0;background:#CCFBF1;}#root{display:flex;flex-direction:column;min-height:0;}',
           }}
         />
       </head>

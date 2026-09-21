@@ -19,35 +19,63 @@ function useWebPageShell() {
     const root = document.getElementById('root') ?? document.body;
     const prev = {
       htmlHeight: document.documentElement.style.height,
+      htmlMaxHeight: document.documentElement.style.maxHeight,
       htmlWidth: document.documentElement.style.width,
       bodyHeight: document.body.style.height,
+      bodyMaxHeight: document.body.style.maxHeight,
       bodyWidth: document.body.style.width,
       bodyMargin: document.body.style.margin,
       bodyBg: document.body.style.background,
       rootHeight: root.style.height,
+      rootMaxHeight: root.style.maxHeight,
+      rootMinHeight: root.style.minHeight,
       rootWidth: root.style.width,
       rootDisplay: root.style.display,
       rootFlex: root.style.flexDirection,
     };
-    document.documentElement.style.height = '100%';
     document.documentElement.style.width = '100%';
-    document.body.style.height = '100%';
     document.body.style.width = '100%';
     document.body.style.margin = '0';
     document.body.style.background = colors.primarySoft;
-    root.style.height = '100%';
     root.style.width = '100%';
-    root.style.minHeight = '100vh';
     root.style.display = 'flex';
     root.style.flexDirection = 'column';
+
+    // 100vh includes the mobile URL bar, and body scroll is locked, so the
+    // bottom of the column sits under the browser chrome. Pin the shell to
+    // the visible viewport instead.
+    const applyHeight = () => {
+      const viewport = window.visualViewport;
+      const height = Math.round(viewport?.height ?? window.innerHeight);
+      const px = `${height}px`;
+      document.documentElement.style.height = px;
+      document.documentElement.style.maxHeight = px;
+      document.body.style.height = px;
+      document.body.style.maxHeight = px;
+      root.style.height = px;
+      root.style.maxHeight = px;
+      root.style.minHeight = '0px';
+    };
+    applyHeight();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', applyHeight);
+    viewport?.addEventListener('scroll', applyHeight);
+    window.addEventListener('resize', applyHeight);
     return () => {
+      viewport?.removeEventListener('resize', applyHeight);
+      viewport?.removeEventListener('scroll', applyHeight);
+      window.removeEventListener('resize', applyHeight);
       document.documentElement.style.height = prev.htmlHeight;
+      document.documentElement.style.maxHeight = prev.htmlMaxHeight;
       document.documentElement.style.width = prev.htmlWidth;
       document.body.style.height = prev.bodyHeight;
+      document.body.style.maxHeight = prev.bodyMaxHeight;
       document.body.style.width = prev.bodyWidth;
       document.body.style.margin = prev.bodyMargin;
       document.body.style.background = prev.bodyBg;
       root.style.height = prev.rootHeight;
+      root.style.maxHeight = prev.rootMaxHeight;
+      root.style.minHeight = prev.rootMinHeight;
       root.style.width = prev.rootWidth;
       root.style.display = prev.rootDisplay;
       root.style.flexDirection = prev.rootFlex;
@@ -94,7 +122,7 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     width: '100%',
-    minHeight: '100%',
+    minHeight: 0,
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
   },
@@ -102,6 +130,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: WEB_COLUMN_MAX_WIDTH,
+    minHeight: 0,
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: colors.bg,

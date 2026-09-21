@@ -13,12 +13,33 @@ import {
 import { PinPreviewCard } from '@/src/components/PinPreviewCard';
 import { PilotMap } from '@/src/components/PilotMap';
 import { PinRow } from '@/src/components/PinRow';
-import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
+import { Chip, Muted, PrimaryButton, Screen, withBottomInset } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
 import { inPilotOblast, KHARKIV } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
+
+const RADIUS_ALERTS_KEY = 'sbm-radius-alerts';
+
+function radiusAlertsStored(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.localStorage.getItem(RADIUS_ALERTS_KEY) === '1') return true;
+  } catch {
+    // storage blocked
+  }
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+}
+
+function rememberRadiusAlerts(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RADIUS_ALERTS_KEY, '1');
+  } catch {
+    // storage blocked
+  }
+}
 
 export default function MapScreen() {
   const { api, session, profile } = useData();
@@ -33,12 +54,16 @@ export default function MapScreen() {
   const [picking, setPicking] = useState(false);
   const [pins, setPins] = useState<Pin[]>([]);
   const [gpsNote, setGpsNote] = useState<string | null>(null);
-  const [alertsOn, setAlertsOn] = useState(false);
+  const [alertsOn, setAlertsOn] = useState(radiusAlertsStored);
   const [alertNote, setAlertNote] = useState<string | null>(null);
   const [gpsTick, setGpsTick] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const radiusKm = profile?.radiusKm ?? 10;
   const selected = selectedId ? pins.find((p) => p.id === selectedId) ?? null : null;
+
+  useEffect(() => {
+    if (radiusAlertsStored()) setAlertsOn(true);
+  }, []);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -149,10 +174,16 @@ export default function MapScreen() {
       }
     }
     setAlertsOn(true);
+    rememberRadiusAlerts();
     setAlertNote(t('alertsOn'));
   }
 
-  const emptyCta = (
+  const emptyCta = alertsOn ? (
+    <View style={styles.emptyBox}>
+      <Text style={styles.emptyText}>{t('noPinsNearbyQuiet')}</Text>
+      <Muted style={styles.alertNote}>{alertNote ?? t('alertsOn')}</Muted>
+    </View>
+  ) : (
     <View style={styles.emptyBox}>
       <Text style={styles.emptyText}>{t('noPinsNearby')}</Text>
       <Pressable
@@ -161,7 +192,7 @@ export default function MapScreen() {
         onPress={() => void enableAlerts()}
         style={styles.bell}
       >
-        <Text style={styles.bellGlyph}>{alertsOn ? '✅' : '🔔'}</Text>
+        <Text style={styles.bellGlyph}>🔔</Text>
         <Text style={styles.bellLabel}>{t('enableAlerts')}</Text>
       </Pressable>
       {alertNote ? <Muted style={styles.alertNote}>{alertNote}</Muted> : null}
@@ -169,7 +200,7 @@ export default function MapScreen() {
   );
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={[styles.screen, withBottomInset(12)]}>
       <View style={styles.filters}>
         {kindLabels.map((k) => (
           <Chip
@@ -256,7 +287,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingBottom: 12 },
+  screen: { minHeight: 0 },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 4 },
   headerBtnText: { color: '#fff', fontSize: 22, fontWeight: '700' },
   filters: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -283,7 +314,7 @@ const styles = StyleSheet.create({
   gpsNote: { marginBottom: 8 },
   mapWrap: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 0,
     position: 'relative',
   },
   mapEmpty: {
@@ -323,7 +354,7 @@ const styles = StyleSheet.create({
   bellGlyph: { fontSize: 28, marginBottom: 4 },
   bellLabel: { color: colors.primaryDark, fontWeight: '700' },
   alertNote: { textAlign: 'center' },
-  list: { flex: 1 },
+  list: { flex: 1, minHeight: 0 },
   footer: { marginTop: 12, gap: 8 },
   profileLink: { alignItems: 'center', padding: 8 },
   profileText: { color: colors.primaryDark, fontWeight: '700' },

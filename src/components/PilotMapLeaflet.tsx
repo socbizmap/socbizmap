@@ -18,12 +18,19 @@ const OSM_ATTR = `<a href="https://www.openstreetmap.org/copyright">${t('osmAttr
 const SKIN_CSS = `
 .leaflet-container{width:100%;height:100%;background:#dbeafe;font:12px/1.3 system-ui,sans-serif;z-index:0;touch-action:none;}
 .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.85);}
-.sbm-pin,.sbm-me{background:transparent!important;border:none!important;display:flex!important;align-items:center;justify-content:center;}
-.sbm-me{pointer-events:none!important;}
-.sbm-pin-dot,.sbm-me-dot{display:block;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.35);}
-.sbm-pin-dot{width:14px;height:14px;background:${colors.primary};}
+.sbm-pin{background:transparent!important;border:none!important;display:flex!important;align-items:center;justify-content:center;}
+.sbm-pin-dot{display:block;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.35);box-sizing:border-box;flex:none;background:${colors.primary};}
 .sbm-pin-on .sbm-pin-dot{width:18px;height:18px;background:${colors.primaryDark};}
-.sbm-me-dot{width:12px;height:12px;background:#2563EB;}
+.leaflet-container .leaflet-marker-icon.sbm-me{
+  width:16px!important;height:16px!important;
+  min-width:16px!important;min-height:16px!important;
+  max-width:16px!important;max-height:16px!important;
+  margin-left:-8px!important;margin-top:-8px!important;
+  padding:0!important;border:2px solid #fff!important;border-radius:50%!important;
+  background:#2563EB!important;box-sizing:border-box!important;aspect-ratio:1/1;
+  display:block!important;flex:none!important;pointer-events:none!important;
+  box-shadow:0 1px 3px rgba(15,23,42,.35);
+}
 `;
 
 function ensureLeafletSkin(): void {
@@ -60,9 +67,9 @@ function pinIcon(L: LeafletNS, selected: boolean) {
 function meIcon(L: LeafletNS) {
   return L.divIcon({
     className: 'sbm-me',
-    html: '<span class="sbm-me-dot"></span>',
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    html: '',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 }
 
@@ -263,7 +270,7 @@ export function PilotMapLeaflet({
         mapRef.current?.invalidateSize();
       }}
     >
-      <LeafletHost hostRef={hostRef} minHeight={compact ? 220 : 280} />
+      <LeafletHost hostRef={hostRef} minHeight={compact ? 220 : 0} />
       <Muted style={styles.plotHint}>{picking ? t('pickOnMap') : t('locationPlotHint')}</Muted>
       {emptyOverlay}
     </View>
@@ -277,7 +284,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
-    minHeight: 280,
+    minHeight: 0,
   },
   plotCompact: {
     flex: 0,

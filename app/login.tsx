@@ -101,6 +101,7 @@ export default function LoginScreen() {
       <Muted style={styles.hint}>
         {backend === 'supabase' ? t('liveHint') : t('mockHint')}
       </Muted>
+      {params.mode === 'register' ? <Muted style={styles.registerHint}>{t('registerNoPassword')}</Muted> : null}
 
       {showPhone && channel === 'phone' ? (
         <>
@@ -209,7 +210,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  hint: { marginTop: 8, marginBottom: 24 },
+  hint: { marginTop: 8, marginBottom: 12 },
+  registerHint: { marginBottom: 20 },
   label: { marginBottom: 6, fontWeight: '700' },
   phoneRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 },
   prefix: { fontWeight: '700' },
