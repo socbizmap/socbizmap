@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   export:
@@ -40,24 +41,14 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 7
-
-  deploy-cloudflare:
-    name: Cloudflare Pages
-    needs: export
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      deployments: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: dist
-      - name: Publish dist
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=socbizmap --branch=${{ github.head_ref || github.ref_name }}
+      - name: Cloudflare Pages (optional)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Skipping Cloudflare Pages (set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable)."
+            exit 0
+          fi
+          npm install --no-save wrangler@4
+          npx wrangler pages deploy dist --project-name=socbizmap --branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"

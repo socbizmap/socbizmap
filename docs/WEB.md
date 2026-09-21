@@ -61,7 +61,7 @@ npx vercel@latest --prod
 4. Node version: `22` (see `.node-version`)
 5. Same three **Build** env vars as Vercel. Deploy on every push to `main`; PRs get `*.pages.dev` previews.
 
-Or GitHub Actions: add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Workflow `.github/workflows/web.yml` exports `dist` and runs `wrangler pages deploy` when those secrets are present.
+Or GitHub Actions: add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Workflow `.github/workflows/web.yml` exports `dist` and, when those secrets are present, runs `wrangler pages deploy`. Without them the optional deploy step is skipped (export still runs).
 
 ```bash
 npx expo export -p web
