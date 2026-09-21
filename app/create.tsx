@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CATEGORIES } from '@/src/categories';
 import { PilotMap } from '@/src/components/PilotMap';
-import { Chip, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
+import { Chip, Muted, PrimaryButton, Screen, Title, withBottomInset } from '@/src/components/ui';
 import { DataError } from '@/src/data';
 import type { GeoPoint, PinCategory, PinKind, Vertical } from '@/src/data/types';
 import {
@@ -233,7 +233,11 @@ export default function CreatePinScreen() {
 
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        style={styles.scroll}
+        contentContainerStyle={withBottomInset(16)}
+      >
         <Title>{editing ? t('edit') : t('createPin')}</Title>
         {quota && !editing ? (
           <Muted style={styles.quota}>
@@ -343,6 +347,7 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1, minHeight: 0 },
   quota: { marginVertical: 12 },
   hint: { marginBottom: 12 },
   row: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },

@@ -4,12 +4,24 @@ import {
   StyleSheet,
   Text,
   View,
+  type DimensionValue,
   type PressableProps,
   type TextProps,
   type ViewProps,
+  type ViewStyle,
 } from 'react-native';
 
 import { colors, WEB_COLUMN_MAX_WIDTH } from '@/src/theme';
+
+/** Extra room so the last control clears the home indicator on phone web. */
+export function withBottomInset(extraPx: number): ViewStyle {
+  if (Platform.OS === 'web') {
+    return {
+      paddingBottom: `calc(${extraPx}px + env(safe-area-inset-bottom, 0px))` as DimensionValue,
+    };
+  }
+  return { paddingBottom: extraPx };
+}
 
 export function Screen({ style, ...rest }: ViewProps) {
   return <View style={[styles.screen, Platform.OS === 'web' ? styles.webScreen : null, style]} {...rest} />;

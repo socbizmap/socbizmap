@@ -40,6 +40,7 @@ const uk = {
   list: 'Список',
   noPhoto: 'Немає фото',
   noPinsNearby: 'Поруч нічого — увімкни сповіщення',
+  noPinsNearbyQuiet: 'Поруч нічого',
   enableAlerts: 'Увімкнути сповіщення',
   alertsOn: 'Сповіщення в радіусі увімкнено',
   alertsNeedLocation: 'Потрібен доступ до геолокації для радіуса.',
