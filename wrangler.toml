@@ -1,0 +1,15 @@
+# Cloudflare Pages (static Expo web export). Mobile / EAS is unchanged.
+# Dashboard → Pages → connect GitHub `main`, or: npx wrangler pages deploy dist --project-name=socbizmap
+#
+# Build command:  npx expo export -p web
+# Output dir:     dist
+#
+# Set these as **Build** environment variables (Expo inlines EXPO_PUBLIC_* at export):
+#   EXPO_PUBLIC_SUPABASE_URL
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY
+#   EXPO_PUBLIC_AUTH_EMAIL=1
+# Never set SUPABASE_SERVICE_ROLE_KEY here.
+
+name = "socbizmap"
+compatibility_date = "2026-09-21"
+pages_build_output_dir = "dist"

@@ -1,0 +1,5 @@
+# Cloudflare Pages / Netlify: Expo writes pin/[id].html and chat/[pinId].html.
+# Deep links / refresh on /pin/<uuid> and /chat/<uuid> rewrite to those shells.
+# Static screens (/, /map, /login, /auth/callback, …) keep their HTML files.
+/pin/*   /pin/[id].html      200
+/chat/*  /chat/[pinId].html  200
