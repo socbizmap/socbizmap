@@ -13,44 +13,84 @@ export {
   ErrorBoundary,
 } from 'expo-router';
 
+/**
+ * Phone Chrome's layout viewport (100vh / height 100%) includes the URL bar
+ * and, with edge-to-edge, the gesture nav. Pin the shell to the visual
+ * viewport and keep bottom padding for the safe-area inset so actions stay
+ * fully tappable.
+ */
 function useWebPageShell() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const root = document.getElementById('root') ?? document.body;
     const prev = {
       htmlHeight: document.documentElement.style.height,
-      htmlWidth: document.documentElement.style.width,
       bodyHeight: document.body.style.height,
-      bodyWidth: document.body.style.width,
       bodyMargin: document.body.style.margin,
+      bodyOverflow: document.body.style.overflow,
       bodyBg: document.body.style.background,
-      rootHeight: root.style.height,
-      rootWidth: root.style.width,
-      rootDisplay: root.style.display,
-      rootFlex: root.style.flexDirection,
+      position: root.style.position,
+      top: root.style.top,
+      left: root.style.left,
+      width: root.style.width,
+      height: root.style.height,
+      minHeight: root.style.minHeight,
+      display: root.style.display,
+      flexDirection: root.style.flexDirection,
+      overflow: root.style.overflow,
+      boxSizing: root.style.boxSizing,
+      paddingBottom: root.style.paddingBottom,
     };
+
     document.documentElement.style.height = '100%';
-    document.documentElement.style.width = '100%';
     document.body.style.height = '100%';
-    document.body.style.width = '100%';
     document.body.style.margin = '0';
+    document.body.style.overflow = 'hidden';
     document.body.style.background = colors.primarySoft;
-    root.style.height = '100%';
-    root.style.width = '100%';
-    root.style.minHeight = '100vh';
-    root.style.display = 'flex';
-    root.style.flexDirection = 'column';
+
+    const apply = () => {
+      const vv = window.visualViewport;
+      const height = Math.round(vv?.height ?? window.innerHeight);
+      const offsetTop = Math.round(vv?.offsetTop ?? 0);
+      root.style.position = 'fixed';
+      root.style.top = `${offsetTop}px`;
+      root.style.left = '0';
+      root.style.width = '100%';
+      root.style.height = `${height}px`;
+      root.style.minHeight = '0';
+      root.style.display = 'flex';
+      root.style.flexDirection = 'column';
+      root.style.overflow = 'hidden';
+      root.style.boxSizing = 'border-box';
+      root.style.paddingBottom = 'env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px))';
+    };
+
+    apply();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', apply);
+    vv?.addEventListener('scroll', apply);
+    window.addEventListener('resize', apply);
+
     return () => {
+      vv?.removeEventListener('resize', apply);
+      vv?.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
       document.documentElement.style.height = prev.htmlHeight;
-      document.documentElement.style.width = prev.htmlWidth;
       document.body.style.height = prev.bodyHeight;
-      document.body.style.width = prev.bodyWidth;
       document.body.style.margin = prev.bodyMargin;
+      document.body.style.overflow = prev.bodyOverflow;
       document.body.style.background = prev.bodyBg;
-      root.style.height = prev.rootHeight;
-      root.style.width = prev.rootWidth;
-      root.style.display = prev.rootDisplay;
-      root.style.flexDirection = prev.rootFlex;
+      root.style.position = prev.position;
+      root.style.top = prev.top;
+      root.style.left = prev.left;
+      root.style.width = prev.width;
+      root.style.height = prev.height;
+      root.style.minHeight = prev.minHeight;
+      root.style.display = prev.display;
+      root.style.flexDirection = prev.flexDirection;
+      root.style.overflow = prev.overflow;
+      root.style.boxSizing = prev.boxSizing;
+      root.style.paddingBottom = prev.paddingBottom;
     };
   }, []);
 }
@@ -67,7 +107,7 @@ export default function RootLayout() {
               headerStyle: { backgroundColor: colors.primary },
               headerTintColor: '#fff',
               headerTitleStyle: { fontWeight: '700' },
-              contentStyle: { backgroundColor: colors.bg },
+              contentStyle: { backgroundColor: colors.bg, flex: 1, minHeight: 0 },
             }}
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -94,7 +134,7 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     width: '100%',
-    minHeight: '100%',
+    minHeight: 0,
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
   },
@@ -102,6 +142,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: WEB_COLUMN_MAX_WIDTH,
+    minHeight: 0,
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: colors.bg,

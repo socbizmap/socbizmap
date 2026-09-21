@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: WEB_COLUMN_MAX_WIDTH,
     alignSelf: 'center',
+    minHeight: 0,
   },
   title: {
     fontSize: 28,

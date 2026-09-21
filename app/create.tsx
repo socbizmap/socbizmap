@@ -233,7 +233,11 @@ export default function CreatePinScreen() {
 
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <Title>{editing ? t('edit') : t('createPin')}</Title>
         {quota && !editing ? (
           <Muted style={styles.quota}>
@@ -343,6 +347,8 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1, minHeight: 0 },
+  scrollContent: { paddingBottom: 24 },
   quota: { marginVertical: 12 },
   hint: { marginBottom: 12 },
   row: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },

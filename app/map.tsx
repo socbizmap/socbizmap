@@ -17,6 +17,7 @@ import { Chip, Muted, PrimaryButton, Screen } from '@/src/components/ui';
 import type { Pin, PinKind, Vertical } from '@/src/data/types';
 import { inPilotOblast, KHARKIV } from '@/src/geo';
 import { t } from '@/src/i18n';
+import { readRadiusAlertsEnabled, writeRadiusAlertsEnabled } from '@/src/radius-alerts';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
 
@@ -34,6 +35,7 @@ export default function MapScreen() {
   const [pins, setPins] = useState<Pin[]>([]);
   const [gpsNote, setGpsNote] = useState<string | null>(null);
   const [alertsOn, setAlertsOn] = useState(false);
+  const [alertsKnown, setAlertsKnown] = useState(false);
   const [alertNote, setAlertNote] = useState<string | null>(null);
   const [gpsTick, setGpsTick] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -79,6 +81,11 @@ export default function MapScreen() {
       setGpsNote(t('gpsDenied'));
       return { ok: false as const, reason: 'error' as const, origin: KHARKIV };
     }
+  }, []);
+
+  useEffect(() => {
+    setAlertsOn(readRadiusAlertsEnabled());
+    setAlertsKnown(true);
   }, []);
 
   useEffect(() => {
@@ -148,11 +155,17 @@ export default function MapScreen() {
         // native Expo push tokens are week 2
       }
     }
+    writeRadiusAlertsEnabled(true);
     setAlertsOn(true);
-    setAlertNote(t('alertsOn'));
+    setAlertNote(null);
   }
 
-  const emptyCta = (
+  const emptyCta = !alertsKnown ? null : alertsOn ? (
+    <View style={styles.emptyBox}>
+      <Text style={styles.bellGlyph}>✅</Text>
+      <Text style={styles.emptyText}>{t('alertsOn')}</Text>
+    </View>
+  ) : (
     <View style={styles.emptyBox}>
       <Text style={styles.emptyText}>{t('noPinsNearby')}</Text>
       <Pressable
@@ -161,7 +174,7 @@ export default function MapScreen() {
         onPress={() => void enableAlerts()}
         style={styles.bell}
       >
-        <Text style={styles.bellGlyph}>{alertsOn ? '✅' : '🔔'}</Text>
+        <Text style={styles.bellGlyph}>🔔</Text>
         <Text style={styles.bellLabel}>{t('enableAlerts')}</Text>
       </Pressable>
       {alertNote ? <Muted style={styles.alertNote}>{alertNote}</Muted> : null}
@@ -220,7 +233,7 @@ export default function MapScreen() {
               }
               setSelectedId(null);
             }}
-            emptyOverlay={pins.length === 0 ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
+            emptyOverlay={pins.length === 0 && emptyCta ? <View style={styles.mapEmpty}>{emptyCta}</View> : null}
           />
           {selected ? (
             <PinPreviewCard pin={selected} onDetails={() => router.push(`/pin/${selected.id}`)} />
@@ -283,8 +296,9 @@ const styles = StyleSheet.create({
   gpsNote: { marginBottom: 8 },
   mapWrap: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 0,
     position: 'relative',
+    overflow: 'hidden',
   },
   mapEmpty: {
     position: 'absolute',
@@ -323,8 +337,8 @@ const styles = StyleSheet.create({
   bellGlyph: { fontSize: 28, marginBottom: 4 },
   bellLabel: { color: colors.primaryDark, fontWeight: '700' },
   alertNote: { textAlign: 'center' },
-  list: { flex: 1 },
-  footer: { marginTop: 12, gap: 8 },
+  list: { flex: 1, minHeight: 0 },
+  footer: { marginTop: 12, gap: 8, flexShrink: 0 },
   profileLink: { alignItems: 'center', padding: 8 },
   profileText: { color: colors.primaryDark, fontWeight: '700' },
 });
