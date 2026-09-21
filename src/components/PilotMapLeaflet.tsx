@@ -263,7 +263,7 @@ export function PilotMapLeaflet({
         mapRef.current?.invalidateSize();
       }}
     >
-      <LeafletHost hostRef={hostRef} minHeight={compact ? 220 : 280} />
+      <LeafletHost hostRef={hostRef} minHeight={compact ? 220 : 120} />
       <Muted style={styles.plotHint}>{picking ? t('pickOnMap') : t('locationPlotHint')}</Muted>
       {emptyOverlay}
     </View>
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
-    minHeight: 280,
+    minHeight: 120,
   },
   plotCompact: {
     flex: 0,

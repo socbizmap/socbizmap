@@ -94,7 +94,7 @@ export function PilotMapSchematic({
           flexGrow: compact ? 0 : 1,
           flexShrink: compact ? 0 : 1,
           height: compact ? 220 : '100%',
-          minHeight: compact ? 220 : 280,
+          minHeight: compact ? 220 : 120,
           background: colors.map,
           borderRadius: 16,
           overflow: 'hidden',
