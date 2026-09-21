@@ -200,7 +200,7 @@ export default function MapScreen() {
   );
 
   return (
-    <Screen style={withBottomInset(12)}>
+    <Screen style={[styles.screen, withBottomInset(12)]}>
       <View style={styles.filters}>
         {kindLabels.map((k) => (
           <Chip
@@ -287,6 +287,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { minHeight: 0 },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 4 },
   headerBtnText: { color: '#fff', fontSize: 22, fontWeight: '700' },
   filters: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -313,7 +314,7 @@ const styles = StyleSheet.create({
   gpsNote: { marginBottom: 8 },
   mapWrap: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 0,
     position: 'relative',
   },
   mapEmpty: {
@@ -353,7 +354,7 @@ const styles = StyleSheet.create({
   bellGlyph: { fontSize: 28, marginBottom: 4 },
   bellLabel: { color: colors.primaryDark, fontWeight: '700' },
   alertNote: { textAlign: 'center' },
-  list: { flex: 1 },
+  list: { flex: 1, minHeight: 0 },
   footer: { marginTop: 12, gap: 8 },
   profileLink: { alignItems: 'center', padding: 8 },
   profileText: { color: colors.primaryDark, fontWeight: '700' },

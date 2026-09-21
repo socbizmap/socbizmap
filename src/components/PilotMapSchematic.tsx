@@ -94,7 +94,7 @@ export function PilotMapSchematic({
           flexGrow: compact ? 0 : 1,
           flexShrink: compact ? 0 : 1,
           height: compact ? 220 : '100%',
-          minHeight: compact ? 220 : 280,
+          minHeight: compact ? 220 : 0,
           background: colors.map,
           borderRadius: 16,
           overflow: 'hidden',
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
-    minHeight: 280,
+    minHeight: 0,
   },
   plotCompact: {
     flex: 0,
