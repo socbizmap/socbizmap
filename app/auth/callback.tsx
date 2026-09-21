@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Body, Muted, PrimaryButton, Screen, Title } from '@/src/components/ui';
 import { t } from '@/src/i18n';
+import { localizeAuthError } from '@/src/lib/auth-errors';
 import { useData } from '@/src/session';
 import { colors } from '@/src/theme';
 
@@ -20,7 +21,9 @@ export default function AuthCallbackScreen() {
     (typeof params.error === 'string' ? params.error : params.error?.[0]) ||
     (typeof params.error_code === 'string' ? params.error_code : params.error_code?.[0]) ||
     null;
-  const displayError = authLinkError ?? urlError;
+  const rawError = authLinkError ?? urlError;
+  const localizedError = rawError ? localizeAuthError(rawError) : null;
+  const displayError = localizedError ?? rawError;
 
   useEffect(() => {
     if (!ready) return;
@@ -32,7 +35,7 @@ export default function AuthCallbackScreen() {
       <Screen>
         <Title>{t('login')}</Title>
         <Body style={styles.err}>{displayError}</Body>
-        <Muted>{t('authCallbackError')}</Muted>
+        {localizedError ? null : <Muted>{t('authCallbackError')}</Muted>}
         <View style={styles.back}>
           <PrimaryButton label={t('login')} onPress={() => router.replace('/login')} />
         </View>

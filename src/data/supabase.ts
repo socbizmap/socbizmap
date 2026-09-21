@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { isValidGeoPoint, isValidUaPhone, normalizeUaPhone, parseGeography, toEwktPoint } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { isAuthCallbackUrl, parseAuthCallbackUrl } from '@/src/lib/auth-callback';
+import { localizeAuthError } from '@/src/lib/auth-errors';
 import { isValidEmail, normalizeEmail } from '@/src/lib/email';
 import { getSupabase } from '@/src/lib/supabase';
 
@@ -192,6 +193,8 @@ function wrapError(err: { message?: string; code?: string } | null, fallback: st
   if (message.includes('PIN_CONTINUE_FORBIDDEN')) {
     throw new DataError('PIN_CONTINUE_FORBIDDEN', t('continueForbidden'));
   }
+  const localized = localizeAuthError(message, err?.code);
+  if (localized) throw new DataError(err?.code ?? 'EMAIL_RATE_LIMIT', localized);
   throw new DataError(err?.code ?? 'SUPABASE', message);
 }
 
