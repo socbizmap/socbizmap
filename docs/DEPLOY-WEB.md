@@ -12,12 +12,19 @@ Without clean URLs, `/login`, `/map`, `/start`, `/auth/callback`, and the other 
 
 ## Dynamic routes
 
-Pins and chats are not known at build time, so Expo exports the dynamic templates with the bracket names:
+Pins and chats are not known at build time, so Expo exports one template HTML file per dynamic route, with the bracket segment in the filename:
 
 - `dist/pin/[id].html`
 - `dist/chat/[pinId].html`
 
-`vercel.json` rewrites `/pin/:id` and `/chat/:pinId` to those files. Query strings (for example `/chat/:pinId?peer=`) are preserved. Do not add a single-page catch-all rewrite to `/index.html`; this export is multi-page HTML, not an SPA.
+Those files are real (a direct request to `/pin/%5Bid%5D` returns the pin shell). Rewriting `/pin/:id` to `/pin/[id].html` still 404s: Vercel applies rewrites only when the destination matches a deployed file, and it tests that path as a glob, so `[id]` is a one-character class and never matches the bracket filename.
+
+After export, `scripts/prepare-vercel-dynamic.mjs` copies the templates to bracket-free files:
+
+- `dist/pin/_id.html`
+- `dist/chat/_pinId.html`
+
+`vercel.json` rewrites `/pin/:id` → `/pin/_id.html` and `/chat/:pinId` → `/chat/_pinId.html`. The browser URL stays `/pin/<id>` (the pin id is not baked into the HTML; the client router reads it). Query strings (for example `/chat/:pinId?peer=`) are preserved. Existing clean URLs (`/login`, `/map`, `/create`, `/auth/callback`, `/chats`) are files on disk and are served before rewrites. Do not add a single-page catch-all rewrite to `/index.html`; each route's HTML is its own prerender.
 
 ## Vercel Git deploys
 
