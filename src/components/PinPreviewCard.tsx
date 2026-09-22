@@ -1,11 +1,19 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View, type DimensionValue, type ViewStyle } from 'react-native';
 
 import { CATEGORIES } from '@/src/categories';
-import { PrimaryButton } from '@/src/components/ui';
+import { PrimaryButton, withBottomInset } from '@/src/components/ui';
 import type { Pin } from '@/src/data/types';
 import { formatKm, formatPay } from '@/src/geo';
 import { t } from '@/src/i18n';
 import { colors } from '@/src/theme';
+
+/** Clear the home indicator on notched phone web. Desktop `env()` is 0, so the 10px offset stays. */
+function previewBottom(): ViewStyle {
+  if (Platform.OS !== 'web') return {};
+  return {
+    bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))' as DimensionValue,
+  };
+}
 
 export function PinPreviewCard({
   pin,
@@ -21,7 +29,7 @@ export function PinPreviewCard({
     .join(' · ');
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, previewBottom(), withBottomInset(14)]}>
       <Text style={styles.title} numberOfLines={2}>
         {pin.title}
       </Text>

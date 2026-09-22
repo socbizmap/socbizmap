@@ -1,12 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npx expo export -p web",
+  "buildCommand": "npx expo export -p web && node scripts/prepare-vercel-dynamic.mjs",
   "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/pin/:id", "destination": "/pin/[id].html" },
-    { "source": "/chat/:pinId", "destination": "/chat/[pinId].html" }
+    { "source": "/pin/:id", "destination": "/pin/_id.html" },
+    { "source": "/chat/:pinId", "destination": "/chat/_pinId.html" }
   ]
 }
