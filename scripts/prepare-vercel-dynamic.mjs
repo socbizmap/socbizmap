@@ -3,7 +3,11 @@
  * (`dist/pin/[id].html`). Vercel rewrite destinations are checked with a
  * glob, so `[id]` is a character class and the rewrite never matches the
  * file — `/pin/:id` stays 404. Copy each template to a bracket-free HTML
- * file that `vercel.json` can rewrite to.
+ * file. `cleanUrls` serves those as `/pin/_id` and `/chat/_pinId`.
+ *
+ * `vercel.json` must rewrite to those extensionless paths. A destination
+ * ending in `.html` is not served in place: with `cleanUrls: true` Vercel
+ * answers 308 (observed as `/_id`, then 404) instead of the pin or chat shell.
  */
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
