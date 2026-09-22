@@ -6,7 +6,7 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/pin/:id", "destination": "/pin/_id.html" },
-    { "source": "/chat/:pinId", "destination": "/chat/_pinId.html" }
+    { "source": "/pin/:id", "destination": "/pin/_id" },
+    { "source": "/chat/:pinId", "destination": "/chat/_pinId" }
   ]
 }

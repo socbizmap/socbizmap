@@ -21,16 +21,16 @@ Those files are real (a direct request to `/pin/%5Bid%5D` returns the pin shell)
 
 After export, `scripts/prepare-vercel-dynamic.mjs` copies the templates to bracket-free files:
 
-- `dist/pin/_id.html`
-- `dist/chat/_pinId.html`
+- `dist/pin/_id.html` (served as `/pin/_id`)
+- `dist/chat/_pinId.html` (served as `/chat/_pinId`)
 
-`vercel.json` rewrites `/pin/:id` → `/pin/_id.html` and `/chat/:pinId` → `/chat/_pinId.html`. The browser URL stays `/pin/<id>` (the pin id is not baked into the HTML; the client router reads it). Query strings (for example `/chat/:pinId?peer=`) are preserved. Existing clean URLs (`/login`, `/map`, `/create`, `/auth/callback`, `/chats`) are files on disk and are served before rewrites. Do not add a single-page catch-all rewrite to `/index.html`; each route's HTML is its own prerender.
+`vercel.json` rewrites `/pin/:id` → `/pin/_id` and `/chat/:pinId` → `/chat/_pinId`. Destinations must omit `.html`. With `cleanUrls: true`, a rewrite to `/pin/_id.html` is not served in place: Vercel responds 308 to `/_id`, and that path 404s. The same happens for `/chat/_pinId.html`. The browser URL stays `/pin/<id>` (the pin id is not baked into the HTML; the client router reads it). Query strings (for example `/chat/:pinId?peer=`) are preserved. Existing clean URLs (`/login`, `/map`, `/create`, `/auth/callback`, `/chats`) are files on disk and are served before rewrites. Do not add a single-page catch-all rewrite to `/index.html`; each route's HTML is its own prerender.
 
 ## Vercel Git deploys
 
 Root `vercel.json` sets:
 
-- `buildCommand`: `npx expo export -p web`
+- `buildCommand`: `npx expo export -p web && node scripts/prepare-vercel-dynamic.mjs`
 - `outputDirectory`: `dist`
 - `framework`: `null` (do not let Vercel pick a Node/SPA preset)
 
