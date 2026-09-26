@@ -92,6 +92,21 @@ type ReplyRow = {
   author_id: string;
 };
 
+/**
+ * Every `pins` column the client needs except `contact_phone`. Signed-in users have no
+ * column SELECT on `contact_phone`; it is read through the `get_pin_contact` RPC.
+ */
+const PIN_COLUMNS =
+  'id, author_id, kind, vertical, title, category, description, schedule, pay_amount, pay_currency, city, status, moderation_note, boost_until, expires_at, auto_renew, created_at, updated_at, lat, lng';
+
+/** Profile columns any signed-in user may read about other users. */
+const PUBLIC_PROFILE_COLUMNS = 'id, display_name, avatar_url, rating_avg, rating_count, account_kind';
+
+type PublicProfileRow = Pick<
+  ProfileRow,
+  'id' | 'display_name' | 'avatar_url' | 'rating_avg' | 'rating_count' | 'account_kind'
+>;
+
 function requireClient(): SupabaseClient {
   const sb = getSupabase();
   if (!sb) throw new DataError('NO_SUPABASE', 'Supabase env is not set');
@@ -124,6 +139,28 @@ function mapProfile(row: ProfileRow): Profile {
     localeOverride: row.locale_override,
     role: row.role,
     plan: row.plan,
+    accountKind: row.account_kind,
+  };
+}
+
+/** Another user's profile: only public columns are readable, private fields stay empty. */
+function mapPublicProfile(row: PublicProfileRow): Profile {
+  return {
+    id: row.id,
+    phone: null,
+    email: null,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    defaultMode: 'seek',
+    vertical: 'work',
+    radiusKm: 10,
+    lastGeog: null,
+    ratingAvg: Number(row.rating_avg),
+    ratingCount: row.rating_count,
+    oblast: '',
+    localeOverride: null,
+    role: 'user',
+    plan: 'free',
     accountKind: row.account_kind,
   };
 }
@@ -213,6 +250,48 @@ async function loadMedia(sb: SupabaseClient, pinId: string): Promise<PinMedia[]>
     .order('sort');
   if (error) return [];
   return (data as MediaRow[] | null)?.map(mapMedia) ?? [];
+}
+
+/** Caller's own full profile row (email, phone, last_geog, role, plan) via RPC. */
+async function loadOwnProfile(sb: SupabaseClient): Promise<Profile | null> {
+  const { data, error } = await sb.rpc('get_my_profile').maybeSingle();
+  if (error) wrapError(error, 'Профіль не знайдено');
+  return data ? mapProfile(data as ProfileRow) : null;
+}
+
+/**
+ * Contact phone of a pin: always for its author and admins, for a live pin otherwise
+ * (server logs the reveal and caps distinct pins per day). Null when not allowed.
+ */
+async function loadPinContact(sb: SupabaseClient, pinId: string): Promise<string | null> {
+  const { data, error } = await sb.rpc('get_pin_contact', { p_pin_id: pinId });
+  if (error) return null;
+  return typeof data === 'string' && data ? data : null;
+}
+
+/**
+ * One pin. Guests read `pins_public` (no phone). Signed-in users read `pins` without
+ * `contact_phone`; `withContact` adds the phone through `get_pin_contact`.
+ */
+async function loadPin(sb: SupabaseClient, id: string, withContact: boolean): Promise<Pin | null> {
+  const { data: sessionData } = await sb.auth.getSession();
+  const viewer = sessionData.session?.user.id;
+  // Anon has no table SELECT on pins — guests use pins_public (no contact_phone).
+  const { data, error } = viewer
+    ? await sb.from('pins').select(PIN_COLUMNS).eq('id', id).maybeSingle()
+    : await sb.from('pins_public').select('*').eq('id', id).maybeSingle();
+  if (error) wrapError(error, 'Мітку не знайдено');
+  if (!data) return null;
+  const row = data as PinRow;
+  const pin = mapPin(row);
+  if (isPinExpired(pin) && pin.authorId !== viewer) {
+    return null;
+  }
+  if (viewer && withContact) {
+    row.contact_phone = await loadPinContact(sb, id);
+  }
+  const media = await loadMedia(sb, id);
+  return mapPin(row, media);
 }
 
 function oppositeKind(kind: PinKind): PinKind {
@@ -311,11 +390,19 @@ export function createSupabaseApi(): DataApi {
 
     async getProfile(userId) {
       const { data: sessionData } = await sb.auth.getSession();
-      const id = userId ?? sessionData.session?.user.id;
+      const me = sessionData.session?.user.id;
+      const id = userId ?? me;
       if (!id) return null;
-      const { data, error } = await sb.from('profiles').select('*').eq('id', id).maybeSingle();
+      if (id === me) return loadOwnProfile(sb);
+      // Profiles are readable only when signed in, and only public columns of other users.
+      if (!me) return null;
+      const { data, error } = await sb
+        .from('profiles')
+        .select(PUBLIC_PROFILE_COLUMNS)
+        .eq('id', id)
+        .maybeSingle();
       if (error) wrapError(error, 'Профіль не знайдено');
-      return data ? mapProfile(data as ProfileRow) : null;
+      return data ? mapPublicProfile(data as PublicProfileRow) : null;
     },
 
     async updateProfile(patch) {
@@ -333,9 +420,11 @@ export function createSupabaseApi(): DataApi {
         }
         body.last_geog = toEwktPoint(patch.lastGeog);
       }
-      const { data, error } = await sb.from('profiles').update(body).eq('id', id).select('*').single();
+      const { error } = await sb.from('profiles').update(body).eq('id', id);
       if (error) wrapError(error, 'Не вдалося оновити профіль');
-      return mapProfile(data as ProfileRow);
+      const profile = await loadOwnProfile(sb);
+      if (!profile) throw new DataError('NOT_FOUND', 'Профіль не знайдено');
+      return profile;
     },
 
     async listLivePins(filters) {
@@ -353,19 +442,7 @@ export function createSupabaseApi(): DataApi {
     },
 
     async getPin(id) {
-      const { data: sessionData } = await sb.auth.getSession();
-      // Anon has no table SELECT on pins — guests use pins_public (no contact_phone).
-      const table = sessionData.session ? 'pins' : 'pins_public';
-      const { data, error } = await sb.from(table).select('*').eq('id', id).maybeSingle();
-      if (error) wrapError(error, 'Мітку не знайдено');
-      if (!data) return null;
-      const pin = mapPin(data as PinRow);
-      const viewer = sessionData.session?.user.id;
-      if (isPinExpired(pin) && pin.authorId !== viewer) {
-        return null;
-      }
-      const media = await loadMedia(sb, id);
-      return mapPin(data as PinRow, media);
+      return loadPin(sb, id, true);
     },
 
     async listMyPins() {
@@ -375,7 +452,7 @@ export function createSupabaseApi(): DataApi {
       await sb.rpc('archive_expired_pins');
       const { data, error } = await sb
         .from('pins')
-        .select('*')
+        .select(PIN_COLUMNS)
         .eq('author_id', id)
         .order('created_at', { ascending: false });
       if (error) wrapError(error, 'Не вдалося завантажити мітки');
@@ -417,10 +494,10 @@ export function createSupabaseApi(): DataApi {
           boost_until: null,
           auto_renew: input.autoRenew !== false,
         })
-        .select('*')
+        .select(PIN_COLUMNS)
         .single();
       if (error) wrapError(error, 'Не вдалося зберегти мітку');
-      const pin = mapPin(data as PinRow);
+      const pin = mapPin({ ...(data as PinRow), contact_phone: contactPhone });
       if (input.media?.length) {
         const { error: mediaError } = await sb.from('pin_media').insert(
           input.media.map((m, i) => ({
@@ -460,9 +537,12 @@ export function createSupabaseApi(): DataApi {
       }
       if (input.status != null) body.status = input.status;
       if (input.autoRenew != null) body.auto_renew = input.autoRenew;
-      const { data, error } = await sb.from('pins').update(body).eq('id', id).select('*').single();
+      const { data, error } = await sb.from('pins').update(body).eq('id', id).select(PIN_COLUMNS).single();
       if (error) wrapError(error, 'Не вдалося оновити мітку');
-      return mapPin(data as PinRow, await loadMedia(sb, id));
+      const row = data as PinRow;
+      row.contact_phone =
+        typeof body.contact_phone === 'string' ? body.contact_phone : await loadPinContact(sb, id);
+      return mapPin(row, await loadMedia(sb, id));
     },
 
     async continuePin(id) {
@@ -490,13 +570,13 @@ export function createSupabaseApi(): DataApi {
       const [{ data: used, error: usedErr }, { data: limit, error: limitErr }, profile] = await Promise.all([
         sb.rpc('pins_created_this_month', { p_user_id: id }),
         sb.rpc('pin_monthly_quota', { p_user_id: id }),
-        sb.from('profiles').select('plan').eq('id', id).maybeSingle(),
+        sb.rpc('get_my_profile').maybeSingle(),
       ]);
       if (usedErr || limitErr) wrapError(usedErr ?? limitErr, 'Квота недоступна');
       return {
         used: Number(used ?? 0),
         limit: Number(limit ?? 3),
-        plan: (profile.data?.plan as Profile['plan'] | undefined) ?? 'free',
+        plan: ((profile.data as ProfileRow | null)?.plan as Profile['plan'] | undefined) ?? 'free',
       };
     },
 
@@ -509,9 +589,9 @@ export function createSupabaseApi(): DataApi {
         { onConflict: 'pin_id,author_id' },
       );
       if (error) wrapError(error, 'Не вдалося відгукнутись');
-      const { data, error: pinErr } = await sb.from('pins').select('contact_phone').eq('id', pinId).single();
+      const { data, error: pinErr } = await sb.rpc('get_pin_contact', { p_pin_id: pinId });
       if (pinErr) wrapError(pinErr, 'Телефон недоступний');
-      const phone = (data as { contact_phone?: string } | null)?.contact_phone;
+      const phone = typeof data === 'string' ? data : null;
       if (!phone) throw new DataError('NO_PHONE', t('needLogin'));
       return { contactPhone: phone };
     },
@@ -520,7 +600,7 @@ export function createSupabaseApi(): DataApi {
       const { data: sessionData } = await sb.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
-      const pin = await this.getPin(pinId);
+      const pin = await loadPin(sb, pinId, false);
       if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
       if (peerId) {
         if (peerId === userId) throw new DataError('FORBIDDEN', t('chatForbidden'));
@@ -641,7 +721,7 @@ export function createSupabaseApi(): DataApi {
       if (!userId) throw new DataError('UNAUTHENTICATED', t('needLogin'));
       const text = body.trim();
       if (!text) throw new DataError('BAD_BODY', t('chatEmptyBody'));
-      const pin = await this.getPin(pinId);
+      const pin = await loadPin(sb, pinId, false);
       if (!pin) throw new DataError('NOT_FOUND', 'Мітку не знайдено');
       if (pin.authorId !== userId && pin.authorId === peerId) {
         const { error: replyErr } = await sb.from('pin_replies').upsert(
@@ -723,7 +803,7 @@ export function createSupabaseApi(): DataApi {
     async listModerationQueue() {
       const { data, error } = await sb
         .from('pins')
-        .select('*')
+        .select(PIN_COLUMNS)
         .in('status', ['pending', 'revision', 'rejected'])
         .order('created_at', { ascending: true });
       if (error) wrapError(error, 'Черга недоступна');

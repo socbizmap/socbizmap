@@ -93,16 +93,16 @@ Restart Expo (`npx expo start`) so `EXPO_PUBLIC_*` is inlined. The client reads 
 
 Without the anon key the splash screen shows **Дані: mock** and never talks to the project.
 
-## 4. Guest reads (anon has no table SELECT on `pins`)
+## 4. Guest reads (anon has no table SELECT on `pins` or `profiles`)
 
-PostgREST needs **table-level** `SELECT` to expose a table. A column grant that omits `contact_phone` is not enough, so **anon has no `SELECT` on `public.pins`**.
+PostgREST needs **table-level** `SELECT` to expose a table. A column grant that omits `contact_phone` is not enough, so **anon has no `SELECT` on `public.pins`**. **Profiles are not readable by anon.**
 
 Guests (and the Expo map) must use:
 
 - RPC **`list_live_pins_nearby`** — map/list, no `contact_phone`
 - View **`pins_public`** — same public columns, **no `contact_phone`**
 
-Logged-in users `select` `public.pins` (includes phone after login). Authors and admin still see own / queue rows via RLS.
+Signed-in users `select` `public.pins` with an explicit column list that omits `contact_phone`. They read `contact_phone` only via RPC **`get_pin_contact`** (30 distinct live pins per user per Kyiv day; authors and admins unlimited). Own profile comes from RPC **`get_my_profile`**; other users are readable only as public columns (`id`, `display_name`, `avatar_url`, `rating_avg`, `rating_count`, `account_kind`). Authors and admin still see own / queue rows via RLS.
 
 ## 5. Storage — `buckets_public_read`
 
